@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  # Python dependencies for the API service
+  - package-ecosystem: "pip"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "deps(pip)"
+      include: "scope"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # Docker base images (Dockerfile and docker-compose image tags)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
