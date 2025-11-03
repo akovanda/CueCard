@@ -23,7 +23,9 @@ jobs:
       - name: Compute next minor
         id: next
         run: |
-          IFS='.' read -r MAJOR MINOR PATCH <<<"${{ steps.get_tag.outputs.latest#v }}"
+          RAW="${{ steps.get_tag.outputs.latest }}"
+          STRIPPED=${RAW#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<<"$STRIPPED"
           NEXT_MINOR=$((MINOR + 1))
           NEW_TAG="v${MAJOR}.${NEXT_MINOR}.0"
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
@@ -39,8 +41,3 @@ jobs:
           git config user.email "github-actions@github.com"
           git tag ${{ steps.next.outputs.tag }}
           git push origin ${{ steps.next.outputs.tag }}
-
-  publish-image:
-    needs: bump-version-and-tag
-    uses: ./.github/workflows/publish.yml
-    secrets: inherit
