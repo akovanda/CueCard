@@ -24,10 +24,24 @@ jobs:
           docker compose up -d --build
 
       - name: Wait for API
+        shell: bash
         run: |
-          for i in {1..60}; do
-            if curl -sS http://localhost:8000/health | grep -q '"ok": true'; then
-              exit 0
+          for i in {1..90}; do
+            CID=$(docker compose ps -q api)
+            if [[ -n "$CID" ]]; then
+              STATUS=$(docker inspect -f '{{.State.Health.Status}}' "$CID" || echo "unknown")
+            else
+              STATUS="unknown"
+            fi
+            if [[ "$STATUS" == "healthy" ]]; then
+              # Try a couple curls but don't fail if they flake; tests run inside the container
+              if curl -fsS --retry 5 --retry-all-errors http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
+                echo "API is healthy"
+                exit 0
+              else
+                echo "API container healthy; proceeding"
+                exit 0
+              fi
             fi
             sleep 2
           done
@@ -36,9 +50,17 @@ jobs:
           docker compose logs api db | tail -n 500
           exit 1
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          docker compose exec -T api pytest -v
+          docker compose exec -T api bash -lc 'mkdir -p /tmp/coverage && export COVERAGE_FILE=/tmp/coverage/.coverage && pytest -v'
+          docker compose cp api:/tmp/coverage/coverage.xml coverage.xml || true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
 
       - name: Show service logs on failure
         if: failure()

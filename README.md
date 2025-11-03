@@ -1,5 +1,10 @@
 # CueCard (v0.2)
 
+[![CI](https://github.com/akovanda/CueCard/actions/workflows/ci.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/ci.yml)
+[![Publish](https://github.com/akovanda/CueCard/actions/workflows/publish.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/publish.yml)
+[![Release](https://img.shields.io/github/v/release/akovanda/CueCard?sort=semver)](https://github.com/akovanda/CueCard/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A tiny sidecar that ingests docs and snippets (Markdown today; OpenAPI next), stores chunks in
 Postgres + pgvector, and retrieves the top‑K relevant snippets to inject into an LLM
 tool-use prompt right before an API call.
@@ -88,6 +93,8 @@ Key configuration categories:
 - **Retrieval**: Reranking weights, overfetch settings
 - **Ranking**: Vote boost weight, usage boost weight and TTL
 - **Workers**: Background processing intervals and batch sizes
+- **Security**: Optional header auth via `CUECARD_API_KEY` (header name defaults to `X-API-Key`)
+- **CORS**: Optional `CORS_ORIGINS` (comma-separated origins) to enable browser use
 
 See `.env.example` for all available options with descriptions.
 
