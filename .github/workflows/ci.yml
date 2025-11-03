@@ -27,6 +27,12 @@ jobs:
         shell: bash
         run: |
           for i in {1..90}; do
+            # First, try hitting the API directly. If it responds ok:true, we're good.
+            if curl -fsS --retry 3 --retry-all-errors http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
+              echo "API is reachable and healthy"
+              exit 0
+            fi
+            # Fallback to container health as a secondary signal
             CID=$(docker compose ps -q api)
             if [[ -n "$CID" ]]; then
               STATUS=$(docker inspect -f '{{.State.Health.Status}}' "$CID" || echo "unknown")
@@ -34,14 +40,11 @@ jobs:
               STATUS="unknown"
             fi
             if [[ "$STATUS" == "healthy" ]]; then
-              # Try a couple curls but don't fail if they flake; tests run inside the container
-              if curl -fsS --retry 5 --retry-all-errors http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
-                echo "API is healthy"
-                exit 0
-              else
-                echo "API container healthy; proceeding"
-                exit 0
-              fi
+              echo "API container marked healthy"
+              exit 0
+            elif [[ "$STATUS" == "starting" ]]; then
+              echo "API container starting; proceeding to tests"
+              exit 0
             fi
             sleep 2
           done

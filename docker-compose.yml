@@ -1,6 +1,6 @@
 services:
   db:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg17
     env_file: .env
     # No host port mapping by default to avoid conflicts. Use an override file if you need access from host.
     healthcheck:
