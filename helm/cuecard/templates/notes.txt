@@ -1,0 +1,7 @@
+
+1. Get the service URL by running these commands:
+  export POD=$(kubectl get pods -l "app.kubernetes.io/name={{ include "cuecard.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl port-forward $POD 8000:8000
+
+2. Test:
+  curl -s http://localhost:8000/health

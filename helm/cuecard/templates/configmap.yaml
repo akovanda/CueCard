@@ -1,0 +1,17 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cuecard.fullname" . }}
+data:
+  EMBEDDING_PROVIDER: "{{ .Values.env.EMBEDDING_PROVIDER }}"
+  EMBEDDING_MODEL: "{{ .Values.env.EMBEDDING_MODEL }}"
+  EMBEDDING_DIM: "{{ .Values.env.EMBEDDING_DIM }}"
+  RERANK_WEIGHT: "{{ .Values.env.RERANK_WEIGHT }}"
+  RETRIEVAL_OVERFETCH: "{{ .Values.env.RETRIEVAL_OVERFETCH }}"
+  WORKER_POLL_SEC: "{{ .Values.env.WORKER_POLL_SEC }}"
+  WORKER_BATCH: "{{ .Values.env.WORKER_BATCH }}"
+  {{- if .Values.env.DATABASE_URL }}
+  DATABASE_URL: "{{ .Values.env.DATABASE_URL }}"
+  {{- end }}
+  API_KEY_HEADER: "{{ .Values.security.apiKeyHeaderName }}"

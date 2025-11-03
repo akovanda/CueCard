@@ -1,0 +1,7 @@
+
+apiVersion: v2
+name: cuecard
+description: CueCard - Operational context sidecar for AI agents
+type: application
+version: 0.2.0
+appVersion: "0.2.0"

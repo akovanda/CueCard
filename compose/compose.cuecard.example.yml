@@ -1,0 +1,24 @@
+
+services:
+  cuecard:
+    image: ghcr.io/your-org/cuecard:0.2
+    environment:
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
+      RERANK_WEIGHT: ${RERANK_WEIGHT:-0.1}
+      RETRIEVAL_OVERFETCH: ${RETRIEVAL_OVERFETCH:-8}
+      WORKER_POLL_SEC: ${WORKER_POLL_SEC:-2}
+      WORKER_BATCH: ${WORKER_BATCH:-32}
+      # If you use openai:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Optional header auth (use with your reverse proxy / your services)
+      CUECARD_API_KEY: ${CUECARD_API_KEY:-}
+      API_KEY_HEADER: ${API_KEY_HEADER:-X-API-Key}
+      # DB (point to an existing Postgres or your compose db service)
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ctx:ctxpw@db:5432/ctx}
+    ports:
+      - "8000:8000"
+    depends_on: []
+    restart: unless-stopped
+    # your app can now call http://cuecard:8000 on the default network
