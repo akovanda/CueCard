@@ -2,7 +2,7 @@ import os
 import contextlib
 import asyncio
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
 
 # We import after setting env within tests
@@ -21,7 +21,8 @@ async def test_cors_disabled_by_default(monkeypatch):
     assert isinstance(app, FastAPI)
 
     # Preflight should not set CORS headers when disabled
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Simulate browser CORS preflight
         headers = {
             "Origin": "http://example.com",
@@ -38,7 +39,8 @@ async def test_cors_enabled_with_origin(monkeypatch):
     from app.server import create_app
     app = create_app()
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         headers = {
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "POST",
@@ -53,7 +55,8 @@ async def test_cors_denies_unlisted_origin(monkeypatch):
     from app.server import create_app
     app = create_app()
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         headers = {
             "Origin": "http://not-allowed.example",
             "Access-Control-Request-Method": "POST",
@@ -61,4 +64,3 @@ async def test_cors_denies_unlisted_origin(monkeypatch):
         resp = await client.options("/retrieve", headers=headers)
         # Origin not listed -> header should not be present
         assert "access-control-allow-origin" not in resp.headers
-
