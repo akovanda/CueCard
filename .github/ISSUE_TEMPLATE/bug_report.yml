@@ -1,0 +1,57 @@
+name: Bug report
+description: File a bug report to help us improve CueCard
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe the issue
+      placeholder: A clear and concise description
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps and commands to reproduce the behavior
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Include relevant logs; redact secrets
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: v0.2.0 or commit SHA
+  - type: dropdown
+    id: env
+    attributes:
+      label: Environment
+      options:
+        - Docker Compose (default)
+        - Kubernetes (Helm)
+        - Other
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS/Linux/Windows
+

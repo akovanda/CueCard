@@ -126,3 +126,12 @@ python examples/openapi_ingestion_example.py
 - OpenAPI/GraphQL/Postman ingestion (examples provided, CLI coming soon)
 - Goal-aware summarization to enforce a 1–2KB snippet budget
 - GitHub Actions to build and publish an image to GHCR
+
+## Contributing
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up your environment, run tests, and submit PRs. Be kind and review our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+If you believe you’ve found a security issue, please follow our [Security Policy](SECURITY.md) for responsible disclosure.
+
+## License
+This project is licensed under the MIT License – see [LICENSE](LICENSE) for details.

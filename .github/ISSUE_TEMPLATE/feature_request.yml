@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an idea for CueCard
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your idea! Please help us understand the use case.
+  - type: input
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the change, with examples if helpful
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+
