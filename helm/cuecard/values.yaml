@@ -1,6 +1,5 @@
-
 image:
-  repository: ghcr.io/your-org/cuecard
+  repository: ghcr.io/akovanda/cuecard
   tag: "0.2"
   pullPolicy: IfNotPresent
 

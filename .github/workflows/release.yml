@@ -1,0 +1,46 @@
+name: Release (auto minor)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bump-version-and-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Compute next minor
+        id: next
+        run: |
+          IFS='.' read -r MAJOR MINOR PATCH <<<"${{ steps.get_tag.outputs.latest#v }}"
+          NEXT_MINOR=$((MINOR + 1))
+          NEW_TAG="v${MAJOR}.${NEXT_MINOR}.0"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create tag if not exists
+        run: |
+          set -euo pipefail
+          if git rev-parse "${{ steps.next.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag already exists, skipping"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${{ steps.next.outputs.tag }}
+          git push origin ${{ steps.next.outputs.tag }}
+
+  publish-image:
+    needs: bump-version-and-tag
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
