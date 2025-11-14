@@ -6,7 +6,11 @@ The format is based on Keep a Changelog (https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
-- TBD
+### Added
+- New `GET /logs` endpoint to query raw tool logs by time range and filters (op_key, doc_id, status range, pagination)
+- Alembic migration `0004_tool_log_timestamp` adding `created_at` column and index to `tool_log`
+- `examples/chat_history_example.py` demonstrating session timelines with `/logs`
+- Documentation updates in `README.md`, `examples/README.md`, and `RAG-GUIDE.md` for session logging and chat history
 
 ## [0.2.0] - 2025-11-02
 ### Added
@@ -40,4 +44,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-

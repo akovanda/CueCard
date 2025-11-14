@@ -44,7 +44,23 @@ python rag_chatbot_example.py
 - How to use `/vote` to collect feedback
 - How to use `/stats` to monitor the system
 
-### 2. OpenAPI Ingestion Example (`openapi_ingestion_example.py`)
+### 2. Chat History Example (`chat_history_example.py`)
+
+Shows how to query raw logs by timestamp and op_key to render a chatbot session timeline.
+It demonstrates using `/log` to associate events with a `SESSION_OP_KEY`, then `/logs` to fetch
+those events within a time window.
+
+**Run it:**
+```bash
+python chat_history_example.py
+```
+
+**What it shows:**
+- How to tag a chat session with `op_key` (e.g. `chat::session-<id>`) and log usage
+- How to query `/logs` with `start_time`, `end_time`, `op_key`, and pagination
+- How to render a simple event list for UI display
+
+### 3. OpenAPI Ingestion Example (`openapi_ingestion_example.py`)
 
 Shows how to ingest OpenAPI specifications for API documentation RAG:
 - Parsing OpenAPI/Swagger specs

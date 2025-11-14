@@ -1,10 +1,11 @@
+from __future__ import annotations
 from typing import Sequence, List, Optional
 from sqlalchemy import select, text, bindparam, func, case, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 from .models import CtxDoc, IngestQueue, ToolLog, DocVote, DocUsageBoost, EMBEDDING_DIM
 from ..embedding import embed_texts
-from datetime import datetime, timedelta
+import datetime as dt
 import os
 
 RERANK_WEIGHT = float(os.getenv("RERANK_WEIGHT", "0.1"))         # success-rate boost (0 = off)
@@ -86,7 +87,7 @@ async def search_snippets(
         return rows
 
     doc_ids = [r.id for r in rows]
-    
+
     # Pull simple success stats for candidates (old rerank logic)
     stats_stmt = select(
         ToolLog.doc_id,
@@ -100,7 +101,7 @@ async def search_snippets(
     votes = {doc_id: vote_count for doc_id, vote_count in (await session.execute(votes_stmt)).all()}
 
     # Pull active temporary usage boosts (not expired)
-    now = datetime.utcnow()
+    now = dt.datetime.now(dt.UTC)
     usage_boost_stmt = select(
         DocUsageBoost.doc_id,
         func.sum(DocUsageBoost.boost_count).label("total_boost")
@@ -115,23 +116,23 @@ async def search_snippets(
         succ, uses = stats.get(row.id, (0, 0))
         sr = (succ / uses) if uses else 0.0
         sr_boost = RERANK_WEIGHT * sr
-        
+
         # Permanent vote boost
         vote_boost = VOTE_BOOST_WEIGHT * votes.get(row.id, 0)
-        
+
         # Temporary usage boost
         usage_boost = USAGE_BOOST_WEIGHT * usage_boosts.get(row.id, 0)
-        
+
         # Lower score is better (closer distance), so subtract boosts
         return idx - sr_boost - vote_boost - usage_boost
 
     rescored = sorted(enumerate(rows), key=lambda t: effective_score(t[0], t[1]))
     final_results = [r for _, r in rescored[:k]]
-    
+
     # Track usage for returned results (tiny temporary boost)
     if track_usage:
         await increment_usage_boosts(session, [r.id for r in final_results])
-    
+
     return final_results
 
 # --- LOGGING ---
@@ -141,6 +142,50 @@ async def log_tool_use(session: AsyncSession, op_key: Optional[str], doc_ids: Li
     session.add_all(rows)
     await session.commit()
     return len(rows)
+
+async def query_tool_logs(
+    session: AsyncSession,
+    start_time: Optional[dt.datetime] = None,
+    end_time: Optional[dt.datetime] = None,
+    op_key: Optional[str] = None,
+    doc_id: Optional[int] = None,
+    status_min: Optional[int] = None,
+    status_max: Optional[int] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[Sequence[ToolLog], int]:
+    """
+    Query raw tool logs with optional time range and filters.
+    Returns (logs, total_count) with pagination.
+    """
+    stmt = select(ToolLog)
+    count_stmt = select(func.count()).select_from(ToolLog)
+
+    if start_time:
+        stmt = stmt.where(ToolLog.created_at >= start_time)
+        count_stmt = count_stmt.where(ToolLog.created_at >= start_time)
+    if end_time:
+        stmt = stmt.where(ToolLog.created_at <= end_time)
+        count_stmt = count_stmt.where(ToolLog.created_at <= end_time)
+    if op_key:
+        stmt = stmt.where(ToolLog.op_key == op_key)
+        count_stmt = count_stmt.where(ToolLog.op_key == op_key)
+    if doc_id is not None:
+        stmt = stmt.where(ToolLog.doc_id == doc_id)
+        count_stmt = count_stmt.where(ToolLog.doc_id == doc_id)
+    if status_min is not None:
+        stmt = stmt.where(ToolLog.status >= status_min)
+        count_stmt = count_stmt.where(ToolLog.status >= status_min)
+    if status_max is not None:
+        stmt = stmt.where(ToolLog.status <= status_max)
+        count_stmt = count_stmt.where(ToolLog.status <= status_max)
+
+    total = (await session.execute(count_stmt)).scalar() or 0
+
+    stmt = stmt.order_by(ToolLog.created_at.desc(), ToolLog.id.desc()).limit(limit).offset(offset)
+    result = await session.execute(stmt)
+    logs = result.scalars().all()
+    return logs, total
 
 # --- VOTING ---
 
@@ -153,14 +198,14 @@ async def vote_for_doc(session: AsyncSession, doc_id: int, increment: int = 1) -
     stmt = select(DocVote).where(DocVote.doc_id == doc_id)
     result = await session.execute(stmt)
     vote = result.scalar_one_or_none()
-    
+
     if vote:
         vote.vote_count += increment
-        vote.updated_at = datetime.utcnow()
+        vote.updated_at = dt.datetime.now(dt.UTC)
     else:
         vote = DocVote(doc_id=doc_id, vote_count=increment)
         session.add(vote)
-    
+
     await session.commit()
     return vote.vote_count
 
@@ -173,10 +218,10 @@ async def increment_usage_boosts(session: AsyncSession, doc_ids: List[int]) -> N
     """
     if not doc_ids:
         return
-    
-    now = datetime.utcnow()
-    expires_at = now + timedelta(days=USAGE_BOOST_TTL_DAYS)
-    
+
+    now = dt.datetime.now(dt.UTC)
+    expires_at = now + dt.timedelta(days=USAGE_BOOST_TTL_DAYS)
+
     for doc_id in doc_ids:
         # Try to find an active (non-expired) boost for this doc
         stmt = select(DocUsageBoost).where(
@@ -184,7 +229,7 @@ async def increment_usage_boosts(session: AsyncSession, doc_ids: List[int]) -> N
         ).order_by(DocUsageBoost.expires_at.desc()).limit(1)
         result = await session.execute(stmt)
         boost = result.scalar_one_or_none()
-        
+
         if boost:
             # Increment existing active boost
             boost.boost_count += 1
@@ -192,7 +237,7 @@ async def increment_usage_boosts(session: AsyncSession, doc_ids: List[int]) -> N
             # Create new boost record
             boost = DocUsageBoost(doc_id=doc_id, boost_count=1, expires_at=expires_at)
             session.add(boost)
-    
+
     await session.commit()
 
 async def cleanup_expired_boosts(session: AsyncSession) -> int:
@@ -200,7 +245,7 @@ async def cleanup_expired_boosts(session: AsyncSession) -> int:
     Delete expired usage boosts.
     Returns number of records deleted.
     """
-    now = datetime.utcnow()
+    now = dt.datetime.now(dt.UTC)
     stmt = text("DELETE FROM doc_usage_boost WHERE expires_at <= :now")
     result = await session.execute(stmt, {"now": now})
     await session.commit()
@@ -222,7 +267,7 @@ async def list_documents(
     """
     stmt = select(CtxDoc)
     count_stmt = select(func.count()).select_from(CtxDoc)
-    
+
     if source:
         stmt = stmt.where(CtxDoc.source == source)
         count_stmt = count_stmt.where(CtxDoc.source == source)
@@ -232,15 +277,15 @@ async def list_documents(
     if tags:
         stmt = stmt.where(CtxDoc.tags.op("&&")(tags))
         count_stmt = count_stmt.where(CtxDoc.tags.op("&&")(tags))
-    
+
     # Get total count
     total = (await session.execute(count_stmt)).scalar()
-    
+
     # Get paginated results
     stmt = stmt.order_by(CtxDoc.id.desc()).limit(limit).offset(offset)
     result = await session.execute(stmt)
     documents = result.scalars().all()
-    
+
     return documents, total or 0
 
 async def get_document(session: AsyncSession, doc_id: int) -> Optional[CtxDoc]:
@@ -258,12 +303,12 @@ async def delete_document(session: AsyncSession, doc_id: int) -> bool:
     doc = await get_document(session, doc_id)
     if not doc:
         return False
-    
+
     # Delete associated records
     await session.execute(text("DELETE FROM doc_vote WHERE doc_id = :id"), {"id": doc_id})
     await session.execute(text("DELETE FROM doc_usage_boost WHERE doc_id = :id"), {"id": doc_id})
     await session.execute(text("DELETE FROM tool_log WHERE doc_id = :id"), {"id": doc_id})
-    
+
     # Delete the document
     await session.delete(doc)
     await session.commit()
@@ -275,34 +320,34 @@ async def get_statistics(session: AsyncSession) -> dict:
     """Get usage statistics for the system."""
     # Document counts
     total_docs = (await session.execute(select(func.count()).select_from(CtxDoc))).scalar()
-    
+
     # Source breakdown
     source_counts = await session.execute(
         select(CtxDoc.source, func.count()).group_by(CtxDoc.source)
     )
     sources = {source: count for source, count in source_counts.all()}
-    
+
     # Queue stats
     queue_stats = await session.execute(
         select(IngestQueue.status, func.count()).group_by(IngestQueue.status)
     )
     queue = {status: count for status, count in queue_stats.all()}
-    
+
     # Tool usage stats
     total_searches = (await session.execute(select(func.count()).select_from(ToolLog))).scalar()
     successful_searches = (await session.execute(
         select(func.count()).select_from(ToolLog).where(ToolLog.status.between(200, 299))
     )).scalar()
-    
+
     # Vote and boost stats
     total_votes = (await session.execute(
         select(func.sum(DocVote.vote_count)).select_from(DocVote)
     )).scalar() or 0
-    
+
     total_boosts = (await session.execute(
         select(func.count()).select_from(DocUsageBoost)
     )).scalar()
-    
+
     return {
         "documents": {
             "total": total_docs or 0,

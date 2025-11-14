@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
 import os
+import datetime as dt  # use module alias for datetime operations
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +11,7 @@ from .db.session import SessionLocal
 from .db.repo import (
     search_snippets, enqueue_items, claim_queue_batch, process_queue_items, log_tool_use,
     vote_for_doc, cleanup_expired_boosts, list_documents, get_document, delete_document,
-    get_statistics
+    get_statistics, query_tool_logs
 )
 from .embedding import embed_texts
 
@@ -70,6 +71,17 @@ def create_app() -> FastAPI:
     class VoteReq(BaseModel):
         doc_id: int
         increment: int = 1
+
+    # Query logs response model (inline dict shaping)
+    def _serialize_log(row):
+        return {
+            "id": row.id,
+            "op_key": row.op_key,
+            "doc_id": row.doc_id,
+            "status": row.status,
+            "latency_ms": row.latency_ms,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
 
     # Background queue worker
     _worker_task: asyncio.Task | None = None
@@ -162,6 +174,49 @@ def create_app() -> FastAPI:
         async with SessionLocal() as session:
             n = await log_tool_use(session, req.op_key, req.doc_ids or [], req.status, req.latency_ms)
         return {"logged": n}
+
+    @app.get("/logs")
+    async def get_logs(
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        op_key: Optional[str] = None,
+        doc_id: Optional[int] = None,
+        status_min: Optional[int] = None,
+        status_max: Optional[int] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ):
+        """Query raw tool logs by time range and filters for UI display"""
+        # Parse ISO timestamps if provided
+        def parse_ts(s: Optional[str]):
+            if not s:
+                return None
+            try:
+                # Accept both with and without timezone; default to UTC
+                return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid timestamp format; use ISO 8601")
+
+        st = parse_ts(start_time)
+        et = parse_ts(end_time)
+        async with SessionLocal() as session:
+            rows, total = await query_tool_logs(
+                session,
+                start_time=st,
+                end_time=et,
+                op_key=op_key,
+                doc_id=doc_id,
+                status_min=status_min,
+                status_max=status_max,
+                limit=limit,
+                offset=offset,
+            )
+        return {
+            "logs": [_serialize_log(r) for r in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
     @app.post("/vote")
     async def vote(req: VoteReq):

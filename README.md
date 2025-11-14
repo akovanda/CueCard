@@ -48,6 +48,14 @@ curl -s http://localhost:8000/stats | jq
 
 # 6) List documents
 curl -s "http://localhost:8000/documents?limit=10" | jq
+
+# 7) Log usage (associate with a session via op_key)
+curl -s -X POST http://localhost:8000/log -H "Content-Type: application/json" -d '{"op_key":"chat::session-123","doc_ids":[1,2],"status":200,"latency_ms":80}' | jq
+
+# 8) Query raw logs for a session
+START=$(date -u -v-10M '+%Y-%m-%dT%H:%M:%SZ')
+END=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=$START&end_time=$END&limit=50" | jq
 ```
 
 > **Note:** If `OPENAI_API_KEY` is set in `.env`, real embeddings are used.
@@ -71,6 +79,7 @@ curl -s "http://localhost:8000/documents?limit=10" | jq
 - `POST /record` - Queue documents for async ingestion
 - `POST /log` - Log retrieval usage for analytics
 - `POST /vote` - Vote for helpful snippets
+- `GET /logs` - Query raw tool logs by time range and filters (for UI timelines)
 
 ### Document Management
 - `GET /documents` - List documents with filtering (source, op_key, tags)
@@ -83,46 +92,45 @@ curl -s "http://localhost:8000/documents?limit=10" | jq
 
 For detailed API documentation and integration patterns, see [RAG-GUIDE.md](RAG-GUIDE.md).
 
-## Environment variables (see `.env.example`)
-All URLs and passwords are provided via environment variables. The compose file reads `.env` and
-passes it to containers. Users should only need to edit `.env`.
+### /logs endpoint
+Use `/logs` to retrieve raw usage events for UIs (e.g., chatbot history) and analytics:
 
-Key configuration categories:
-- **Database**: PostgreSQL connection settings
-- **Embeddings**: Provider (OpenAI/local), model, dimensions
-- **Retrieval**: Reranking weights, overfetch settings
-- **Ranking**: Vote boost weight, usage boost weight and TTL
-- **Workers**: Background processing intervals and batch sizes
-- **Security**: Optional header auth via `CUECARD_API_KEY` (header name defaults to `X-API-Key`)
-- **CORS**: Optional `CORS_ORIGINS` (comma-separated origins) to enable browser use
+Query params:
+- `start_time` (ISO 8601, e.g., `2025-11-13T15:00:00Z`)
+- `end_time` (ISO 8601)
+- `op_key` (string) – associate logs with a session or operation
+- `doc_id` (int) – filter by specific document ID
+- `status_min`/`status_max` (int) – filter by status range (e.g., 200–299)
+- `limit`/`offset` – pagination
 
-See `.env.example` for all available options with descriptions.
-
-## Testing
-
-Run the comprehensive test suite:
-
+Example:
 ```bash
-# Run all tests
-docker compose exec api pytest -v
-
-# Run specific test class
-docker compose exec api pytest -v -k TestRetrieveEndpoint
-
-# Run with coverage
-docker compose exec api pytest --cov=app
+curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=2025-11-13T15:00:00Z&end_time=2025-11-13T15:30:00Z&limit=50" | jq
+```
+Response shape:
+```json
+{
+  "logs": [
+    {"id":1,"op_key":"chat::session-123","doc_id":42,"status":200,"latency_ms":85,"created_at":"2025-11-13T15:05:22.123Z"}
+  ],
+  "total": 12,
+  "limit": 50,
+  "offset": 0
+}
 ```
 
 ## Examples
 
 See the `examples/` directory for:
 - **RAG Chatbot Example**: Complete workflow from ingestion to retrieval to feedback
+- **Chat History Example**: Query raw logs with `/logs` to render a session timeline
 - **OpenAPI Ingestion Example**: Parse and ingest API specifications
 - **Integration Patterns**: Best practices for using CueCard in your RAG pipeline
 
 Run examples:
 ```bash
 python examples/rag_chatbot_example.py
+python examples/chat_history_example.py
 python examples/openapi_ingestion_example.py
 ```
 

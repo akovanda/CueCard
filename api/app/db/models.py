@@ -41,6 +41,8 @@ class ToolLog(Base):
     doc_id: Mapped[Optional[int]] = mapped_column(BigInteger)  # references ctx_doc.id (not strict FK)
     status: Mapped[Optional[int]] = mapped_column(Integer)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    # Timestamp for when the log entry was created
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
 class DocVote(Base):
     """Permanent boost votes - when user marks a doc as 'good'"""

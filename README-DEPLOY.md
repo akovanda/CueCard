@@ -1,4 +1,3 @@
-
 # CueCard Deploy Kit (v0.2)
 
 This kit lets you ship CueCard as a sidecar/companion next to any service via **Docker Compose** or **Helm**, and optionally publish images to **GHCR** and **Docker Hub**.
@@ -106,4 +105,11 @@ curl -s http://<host>:<port>/record -H "Content-Type: application/json" -d '{
 
 # retrieve after ~2s
 curl -s http://<host>:<port>/retrieve -H "Content-Type: application/json" -d '{"goal":"reply politely","k":3}'
+
+# log usage and query raw logs (optional)
+curl -s -X POST http://<host>:<port>/log -H "Content-Type: application/json" -d '{"op_key":"smoke::session","status":200,"latency_ms":50}'
+START=$(date -u -v-5M '+%Y-%m-%dT%H:%M:%SZ') ; END=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+curl -s "http://<host>:<port>/logs?op_key=smoke::session&start_time=$START&end_time=$END&limit=10" | jq
 ```
+
+> Note: Migration `0004_tool_log_timestamp` adds `created_at` to `tool_log` for time-range queries.
