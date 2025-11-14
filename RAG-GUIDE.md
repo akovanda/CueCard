@@ -448,6 +448,56 @@ curl http://localhost:8000/stats | jq '.queue'
 - Use `op_key` to filter results
 - Collect user feedback via voting
 
+## Session Logging & Chat History
+
+For chatbots and UIs that need to display recent activity, use `op_key` to tag a session and `/logs` to fetch a timeline.
+
+### Tagging a Session with op_key
+Pick a stable identifier per conversation (e.g., `chat::session-<id>`) and include it when logging:
+
+```bash
+curl -X POST http://localhost:8000/log \
+  -H "Content-Type: application/json" \
+  -d '{
+    "op_key": "chat::session-123",
+    "doc_ids": [42, 43],
+    "status": 200,
+    "latency_ms": 95
+  }'
+```
+
+### Query Raw Logs by Time Range
+Use ISO 8601 timestamps (`YYYY-MM-DDTHH:MM:SSZ`) and filter by `op_key`:
+
+```bash
+START=$(date -u -v-15M '+%Y-%m-%dT%H:%M:%SZ')
+END=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=$START&end_time=$END&limit=100" | jq
+```
+
+### Example: Rendering a Timeline
+The response includes `created_at` for UI display:
+
+```json
+{
+  "logs": [
+    {"id":1,"op_key":"chat::session-123","doc_id":42,"status":200,"latency_ms":85,"created_at":"2025-11-13T15:05:22.123Z"}
+  ],
+  "total": 12,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+Sort ascending in your UI to show oldest-first.
+
+### Best Practices
+- Use unique `op_key` per session to isolate timelines.
+- Log all retrievals; even missing results help diagnose relevance gaps.
+- Only inject the top-N most relevant snippets into prompts; display the full history separately.
+
+See `examples/chat_history_example.py` for a complete working script.
+
 ## Examples
 
 See `examples/` directory for:

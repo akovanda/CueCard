@@ -170,3 +170,30 @@ async def test_cli_ingest_md(tmp_path, monkeypatch):
         docs, total = await repo.list_documents(session, source="md", tags=["cli"], limit=100, offset=0)
         # Should find at least 2 with 'cli' tag
         assert len(docs) >= 2
+
+
+@pytest.mark.asyncio
+async def test_query_tool_logs_time_range_and_filters():
+    async with SessionLocal() as session:
+        # Insert some logs with op_key and status
+        n = await repo.log_tool_use(session, op_key="chat", doc_ids=[None], status=200, latency_ms=50)
+        assert n == 1
+        await asyncio.sleep(0.1)  # ensure different timestamps
+        n2 = await repo.log_tool_use(session, op_key="chat", doc_ids=[None], status=500, latency_ms=75)
+        assert n2 == 1
+
+        # Query recent logs
+        now = datetime.utcnow()
+        start = now - timedelta(minutes=5)
+        logs, total = await repo.query_tool_logs(session, start_time=start, end_time=now, op_key="chat")
+        assert total >= 2
+        assert all(l.op_key == "chat" for l in logs)
+        assert len(logs) <= total
+
+        # Pagination
+        logs_page1, total1 = await repo.query_tool_logs(session, op_key="chat", limit=1, offset=0)
+        logs_page2, total2 = await repo.query_tool_logs(session, op_key="chat", limit=1, offset=1)
+        assert total1 == total2 >= 2
+        assert len(logs_page1) == 1 and len(logs_page2) == 1
+        assert logs_page1[0].id != logs_page2[0].id
+
