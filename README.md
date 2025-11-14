@@ -138,9 +138,9 @@ python examples/openapi_ingestion_example.py
 - ✅ Complete RAG API endpoints
 - ✅ Comprehensive testing infrastructure
 - ✅ Documentation and examples
+- ✅ GitHub Actions to build and publish an image to GHCR
 - OpenAPI/GraphQL/Postman ingestion (examples provided, CLI coming soon)
 - Goal-aware summarization to enforce a 1–2KB snippet budget
-- GitHub Actions to build and publish an image to GHCR
 
 ## Contributing
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up your environment, run tests, and submit PRs. Be kind and review our [Code of Conduct](CODE_OF_CONDUCT.md).
