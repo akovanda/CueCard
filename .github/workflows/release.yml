@@ -52,9 +52,11 @@ jobs:
             TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
             CREATED=true
           fi
-          echo "created=$CREATED" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          {
+            echo "created=$CREATED"
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Compute image name
         id: image
