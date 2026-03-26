@@ -20,6 +20,11 @@ Use `.github/workflows/release.yml`. Every push to `main` computes the next patc
 ### Required repo settings
 - **Actions → General → Workflow permissions:** enable "Read and write permissions".
 - **Packages:** allow GitHub Actions to write to GHCR for this repository.
+- If `ghcr.io/<owner>/cuecard` already exists and was not originally published by this repository, open the package settings and either:
+  - add this repository under **Actions access**, or
+  - enable inherited access from the linked repository, or
+  - delete the old package so the workflow can recreate it cleanly.
+- Optional: add `GHCR_TOKEN` and `GHCR_USERNAME` repository secrets if you want the release workflow to publish with a dedicated PAT instead of `GITHUB_TOKEN`.
 
 ## B) Helm (Kubernetes)
 

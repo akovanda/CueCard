@@ -63,3 +63,5 @@ When filing an issue, include:
 
 ## Releasing
 Pushes to `main` trigger `.github/workflows/release.yml`, which creates the next patch tag `vX.Y.Z`, publishes `ghcr.io/<owner>/cuecard:X.Y.Z` and `:latest`, and creates a GitHub Release. Use `workflow_dispatch` on the same workflow if you need to rerun a release manually.
+
+If the image push fails with `403 Forbidden` from `ghcr.io`, the package usually exists without this repository having workflow access. Fix that in the package's GitHub settings under `Actions access`, or set `GHCR_TOKEN` and `GHCR_USERNAME` secrets so releases publish with a dedicated package token.
