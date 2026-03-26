@@ -1,68 +1,84 @@
+from __future__ import annotations
+
 import asyncio
 import sys
-import os
+
 import pytest
 
-from app.db.session import SessionLocal
 from app.db import repo
+from app.db.session import session_scope
 
 
 @pytest.mark.asyncio
-async def test_cli_main_happy_path(tmp_path, monkeypatch):
-    # Prepare sample markdown files
-    md_dir = tmp_path / "docs"
-    md_dir.mkdir(parents=True, exist_ok=True)
-    (md_dir / "x.md").write_text("Title X\n\nBody X", encoding="utf-8")
-    (md_dir / "y.md").write_text("Title Y\n\nBody Y", encoding="utf-8")
+async def test_cli_ingest_md_happy_path(tmp_path, settings):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "x.md").write_text("Title X\n\nBody X", encoding="utf-8")
+    (docs_dir / "y.md").write_text("Title Y\n\nBody Y", encoding="utf-8")
 
-    # Call ingest_md directly to avoid asyncio.run conflicts
     from app.cli import ingest_md
-    await ingest_md(str(md_dir), op_key="cli_main", tags=["cli", "sample"])
 
-    # Verify rows
-    async with SessionLocal() as session:
-        docs, total = await repo.list_documents(session, source="md", tags=["cli"], limit=10, offset=0)
-        assert len(docs) >= 2
+    await ingest_md(str(docs_dir), op_key="cli_main", tags=["cli", "sample"])
+
+    async with session_scope(settings) as session:
+        docs, total = await repo.list_documents(
+            session,
+            source="md",
+            tags=["cli"],
+            limit=10,
+            offset=0,
+        )
+        assert total == 2
+        assert {doc.title for doc in docs} == {"x.md", "y.md"}
 
 
 @pytest.mark.asyncio
 async def test_cli_ingest_md_empty(tmp_path, capsys):
-    # Directory with no md files
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir(parents=True, exist_ok=True)
 
     from app.cli import ingest_md
+
     await ingest_md(str(empty_dir), op_key=None, tags=["none"])
 
-    # Ensure it printed a helpful message and returned without error
     out = capsys.readouterr().out
     assert "No markdown files found" in out
 
 
-def test_cli_main_invocation(tmp_path, monkeypatch):
-    md_dir = tmp_path / "docs2"
-    md_dir.mkdir(parents=True, exist_ok=True)
-    (md_dir / "m.md").write_text("Title M\n\nBody M", encoding="utf-8")
+def test_cli_main_invocation(tmp_path, settings):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "m.md").write_text("Title M\n\nBody M", encoding="utf-8")
 
     argv = [
         "ctx",
         "ingest-md",
         "--md",
-        str(md_dir),
+        str(docs_dir),
         "--op-key",
         "cli_main_inv",
         "--tag",
         "cli",
     ]
-    monkeypatch.setattr(sys, "argv", argv)
 
-    from app import cli as cli_mod
-    cli_mod.main()
+    old_argv = sys.argv
+    try:
+        sys.argv = argv
+        from app import cli as cli_mod
 
-    # Verify at least one doc ingested
-    import asyncio as _asyncio
-    async def _check():
-        async with SessionLocal() as session:
-            docs, total = await repo.list_documents(session, source="md", tags=["cli"], limit=10, offset=0)
-            assert total >= 1
-    _asyncio.run(_check())
+        cli_mod.main()
+    finally:
+        sys.argv = old_argv
+
+    async def verify() -> None:
+        async with session_scope(settings) as session:
+            _docs, total = await repo.list_documents(
+                session,
+                source="md",
+                tags=["cli"],
+                limit=10,
+                offset=0,
+            )
+            assert total == 1
+
+    asyncio.run(verify())

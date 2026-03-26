@@ -10,17 +10,30 @@ This example shows how to:
 """
 
 import asyncio
+import os
+from pathlib import Path
+
 import httpx
+from dotenv import load_dotenv
 
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 CUECARD_API = "http://localhost:8000"
+API_KEY_HEADER = os.getenv("API_KEY_HEADER", "X-API-Key")
+CUECARD_API_KEY = os.getenv("CUECARD_API_KEY")
+
+
+def auth_headers() -> dict[str, str]:
+    if not CUECARD_API_KEY:
+        return {}
+    return {API_KEY_HEADER: CUECARD_API_KEY}
 
 
 async def setup_documentation():
     """Step 1: Ingest sample documentation"""
     print("📚 Ingesting documentation...")
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.post(f"{CUECARD_API}/record", json={
             "items": [
                 {
@@ -95,7 +108,7 @@ async def retrieve_context(question: str) -> list:
     """Step 2: Retrieve relevant context for a question"""
     print(f"\n🔍 Retrieving context for: '{question}'")
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.post(f"{CUECARD_API}/retrieve", json={
             "goal": question,
             "k": 3  # Get top 3 most relevant snippets
@@ -145,7 +158,7 @@ async def log_usage(snippets: list, success: bool):
     
     print("\n📊 Logging usage...")
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.post(f"{CUECARD_API}/log", json={
             "doc_ids": [s["id"] for s in snippets],
             "status": 200 if success else 500,
@@ -163,7 +176,7 @@ async def collect_feedback(snippet_id: int, helpful: bool):
     if not helpful:
         return  # Only record positive feedback in this example
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.post(f"{CUECARD_API}/vote", json={
             "doc_id": snippet_id,
             "increment": 1
@@ -208,7 +221,7 @@ async def show_statistics():
     print("System Statistics")
     print("="*60)
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.get(f"{CUECARD_API}/stats")
         
         if response.status_code == 200:

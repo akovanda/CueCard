@@ -1,3 +1,8 @@
+x-api-build: &api-build
+  context: ./api
+  args:
+    INSTALL_DEV: "true"
+
 services:
   db:
     image: pgvector/pgvector:pg17
@@ -12,33 +17,50 @@ services:
       - dbdata:/var/lib/postgresql/data
 
   migrations:
-    build:
-      context: ./api
+    build: *api-build
     env_file: .env
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
 
   api:
-    build:
-      context: ./api
+    build: *api-build
     env_file: .env
     depends_on:
       db:
         condition: service_healthy
       migrations:
-        condition: service_started
+        condition: service_completed_successfully
+    command: ["uvicorn", "app.server:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - ./api:/app
       - ./examples:/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "/app/app/healthcheck.py"]
       interval: 10s
       timeout: 5s
       retries: 12
+
+  worker:
+    build: *api-build
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - ./api:/app
+      - ./examples:/data
+    restart: unless-stopped
+    healthcheck:
+      disable: true
 
 volumes:
   dbdata:

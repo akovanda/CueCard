@@ -7,10 +7,16 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 ### Added
-- New `GET /logs` endpoint to query raw tool logs by time range and filters (op_key, doc_id, status range, pagination)
-- Alembic migration `0004_tool_log_timestamp` adding `created_at` column and index to `tool_log`
-- `examples/chat_history_example.py` demonstrating session timelines with `/logs`
-- Documentation updates in `README.md`, `examples/README.md`, and `RAG-GUIDE.md` for session logging and chat history
+- Dedicated worker process for queue ingestion and expired usage-boost cleanup
+- Centralized settings with embedding-dimension validation against the database schema
+- Lease/retry metadata for queued ingestion work
+- `actionlint` workflow and Trivy gating for high/critical findings
+
+### Changed
+- Retrieval ranking now uses vector distance plus normalized vote and usage boosts
+- API request validation and response models are explicit across retrieval, documents, logs, stats, and config
+- Helm, Compose, and Kubernetes examples now keep `DATABASE_URL` in Secrets and enable API key auth by default
+- README, deploy docs, RAG guide, and examples were rewritten to match the current runtime and CI flow
 
 ## [0.2.0] - 2025-11-02
 ### Added
@@ -21,26 +27,5 @@ and this project adheres to Semantic Versioning.
 - Helm chart and Kubernetes manifests
 - Comprehensive pytest suite and examples
 
-[Unreleased]: https://github.com/OWNER/REPO/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/OWNER/REPO/releases/tag/v0.2.0
-MIT License
-
-Copyright (c) 2025 CueCard contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+[Unreleased]: https://github.com/akovanda/CueCard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/akovanda/CueCard/releases/tag/v0.2.0

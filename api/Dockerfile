@@ -3,12 +3,11 @@ FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ARG INSTALL_DEV=false
 
-# Upgrade packaging tools
-RUN python -m pip install --upgrade pip setuptools wheel
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
+COPY requirements.txt requirements-dev.txt ./
+RUN python -m pip install --no-cache-dir -r requirements.txt \
+    && if [ "$INSTALL_DEV" = "true" ]; then python -m pip install --no-cache-dir -r requirements-dev.txt; fi \
     && pip cache purge
 
 # Add non-root user

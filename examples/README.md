@@ -1,6 +1,6 @@
 # CueCard Examples
 
-This directory contains example code and documentation showing how to use CueCard for RAG (Retrieval-Augmented Generation).
+This directory contains runnable examples for the main CueCard workflows.
 
 ## Running the Examples
 
@@ -14,13 +14,15 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+The example scripts load `../.env` automatically. If you keep the sample auth setting, they will send `X-API-Key: change-me` unless you override `CUECARD_API_KEY`.
+
 ### Install Python Dependencies for Examples
 
 ```bash
-pip install httpx pyyaml
+pip install httpx pyyaml python-dotenv
 ```
 
-## Example Scripts
+## Example scripts
 
 ### 1. RAG Chatbot Example (`rag_chatbot_example.py`)
 
@@ -79,7 +81,7 @@ python openapi_ingestion_example.py
 - How to use tags for categorization
 - How to test RAG retrieval for API documentation
 
-## Sample Documentation
+## Sample documentation
 
 The `docs/` directory contains sample markdown files that can be ingested using the CLI:
 
@@ -91,7 +93,7 @@ docker compose exec api python -m app.cli ingest-md \
   --tag documentation
 ```
 
-## Manual Testing with cURL
+## Manual testing with curl
 
 ### Health Check
 ```bash
@@ -100,12 +102,13 @@ curl http://localhost:8000/health
 
 ### View Configuration
 ```bash
-curl http://localhost:8000/config | jq
+curl http://localhost:8000/config -H "X-API-Key: change-me" | jq
 ```
 
 ### Ingest a Document
 ```bash
 curl -X POST http://localhost:8000/record \
+  -H "X-API-Key: change-me" \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
@@ -122,6 +125,7 @@ curl -X POST http://localhost:8000/record \
 ### Retrieve Context
 ```bash
 curl -X POST http://localhost:8000/retrieve \
+  -H "X-API-Key: change-me" \
   -H "Content-Type: application/json" \
   -d '{
     "goal": "test document",
@@ -131,17 +135,18 @@ curl -X POST http://localhost:8000/retrieve \
 
 ### List Documents
 ```bash
-curl "http://localhost:8000/documents?limit=10" | jq
+curl "http://localhost:8000/documents?limit=10" -H "X-API-Key: change-me" | jq
 ```
 
 ### Get Document Details
 ```bash
-curl http://localhost:8000/documents/1 | jq
+curl http://localhost:8000/documents/1 -H "X-API-Key: change-me" | jq
 ```
 
 ### Vote for a Document
 ```bash
 curl -X POST http://localhost:8000/vote \
+  -H "X-API-Key: change-me" \
   -H "Content-Type: application/json" \
   -d '{
     "doc_id": 1,
@@ -151,22 +156,18 @@ curl -X POST http://localhost:8000/vote \
 
 ### View Statistics
 ```bash
-curl http://localhost:8000/stats | jq
+curl http://localhost:8000/stats -H "X-API-Key: change-me" | jq
 ```
 
 ### Delete a Document
 ```bash
-curl -X DELETE http://localhost:8000/documents/1 | jq
+curl -X DELETE http://localhost:8000/documents/1 -H "X-API-Key: change-me" | jq
 ```
 
-## Integration Patterns
-
-See `../RAG-GUIDE.md` for detailed integration patterns including:
-- LLM tool augmentation
-- Q&A chatbots
-- User feedback loops
-- Batch document ingestion
-- Configuration tuning
+## Related docs
+- `../README.md` for the main project overview
+- `../RAG-GUIDE.md` for integration patterns and API examples
+- `../README-DEPLOY.md` for Helm, Compose, and Kubernetes deployment notes
 
 ## Tips
 

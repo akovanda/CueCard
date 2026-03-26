@@ -1,4 +1,3 @@
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,12 +5,14 @@ metadata:
 data:
   EMBEDDING_PROVIDER: "{{ .Values.env.EMBEDDING_PROVIDER }}"
   EMBEDDING_MODEL: "{{ .Values.env.EMBEDDING_MODEL }}"
-  EMBEDDING_DIM: "{{ .Values.env.EMBEDDING_DIM }}"
   RERANK_WEIGHT: "{{ .Values.env.RERANK_WEIGHT }}"
   RETRIEVAL_OVERFETCH: "{{ .Values.env.RETRIEVAL_OVERFETCH }}"
+  VOTE_BOOST_WEIGHT: "{{ .Values.env.VOTE_BOOST_WEIGHT }}"
+  USAGE_BOOST_WEIGHT: "{{ .Values.env.USAGE_BOOST_WEIGHT }}"
+  USAGE_BOOST_TTL_DAYS: "{{ .Values.env.USAGE_BOOST_TTL_DAYS }}"
   WORKER_POLL_SEC: "{{ .Values.env.WORKER_POLL_SEC }}"
   WORKER_BATCH: "{{ .Values.env.WORKER_BATCH }}"
-  {{- if .Values.env.DATABASE_URL }}
-  DATABASE_URL: "{{ .Values.env.DATABASE_URL }}"
-  {{- end }}
+  WORKER_LEASE_SEC: "{{ .Values.env.WORKER_LEASE_SEC }}"
+  CLEANUP_INTERVAL_SEC: "{{ .Values.env.CLEANUP_INTERVAL_SEC }}"
+  CORS_ORIGINS: "{{ .Values.env.CORS_ORIGINS }}"
   API_KEY_HEADER: "{{ .Values.security.apiKeyHeaderName }}"

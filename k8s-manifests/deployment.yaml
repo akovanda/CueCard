@@ -1,22 +1,80 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cuecard
+data:
+  EMBEDDING_PROVIDER: "local"
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  RERANK_WEIGHT: "0.1"
+  RETRIEVAL_OVERFETCH: "8"
+  VOTE_BOOST_WEIGHT: "1.0"
+  USAGE_BOOST_WEIGHT: "0.01"
+  USAGE_BOOST_TTL_DAYS: "14"
+  WORKER_POLL_SEC: "2"
+  WORKER_BATCH: "32"
+  WORKER_LEASE_SEC: "300"
+  CLEANUP_INTERVAL_SEC: "3600"
+  API_KEY_HEADER: "X-API-Key"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cuecard-secret
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql+psycopg://ctx:ctx@postgres:5432/ctx"
+  OPENAI_API_KEY: ""
+  CUECARD_API_KEY: "replace-with-a-long-random-secret"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cuecard-migrations
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      restartPolicy: OnFailure
+      containers:
+        - name: cuecard-migrations
+          image: ghcr.io/akovanda/cuecard:0.2
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: cuecard }
+            - secretRef: { name: cuecard-secret }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities: { drop: ["ALL"] }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cuecard
+  name: cuecard-api
 spec:
   replicas: 1
   selector:
-    matchLabels: { app: cuecard }
+    matchLabels: { app: cuecard, component: api }
   template:
     metadata:
-      labels: { app: cuecard }
+      labels: { app: cuecard, component: api }
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: cuecard
+        - name: cuecard-api
           image: ghcr.io/akovanda/cuecard:0.2
-          ports: [{ containerPort: 8000 }]
-          env:
-            - name: EMBEDDING_PROVIDER
-              value: "local"
+          envFrom:
+            - configMapRef: { name: cuecard }
+            - secretRef: { name: cuecard-secret }
+          ports: [{ containerPort: 8000, name: http }]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -26,13 +84,46 @@ spec:
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits: { cpu: "500m", memory: "512Mi" }
-          livenessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10 }
-          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 5 }
+          livenessProbe: { httpGet: { path: /health, port: http }, initialDelaySeconds: 10 }
+          readinessProbe: { httpGet: { path: /health, port: http }, initialDelaySeconds: 5 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cuecard-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cuecard, component: worker }
+  template:
+    metadata:
+      labels: { app: cuecard, component: worker }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cuecard-worker
+          image: ghcr.io/akovanda/cuecard:0.2
+          command: ["python", "-m", "app.worker"]
+          envFrom:
+            - configMapRef: { name: cuecard }
+            - secretRef: { name: cuecard-secret }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: cuecard
 spec:
-  selector: { app: cuecard }
-  ports: [{ port: 8000, targetPort: 8000 }]
+  selector: { app: cuecard, component: api }
+  ports: [{ port: 8000, targetPort: http }]

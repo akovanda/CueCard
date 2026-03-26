@@ -88,10 +88,10 @@ def main():
     
     config_sections = {
         "Database": ["POSTGRES_HOST", "DATABASE_URL"],
-        "Embeddings": ["EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_DIM"],
+        "Embeddings": ["EMBEDDING_PROVIDER", "EMBEDDING_MODEL"],
         "Retrieval": ["RERANK_WEIGHT", "RETRIEVAL_OVERFETCH"],
         "Ranking": ["VOTE_BOOST_WEIGHT", "USAGE_BOOST_WEIGHT", "USAGE_BOOST_TTL_DAYS"],
-        "Workers": ["WORKER_POLL_SEC", "WORKER_BATCH", "CLEANUP_INTERVAL_SEC"],
+        "Workers": ["WORKER_POLL_SEC", "WORKER_BATCH", "WORKER_LEASE_SEC", "CLEANUP_INTERVAL_SEC"],
     }
     
     for section, keys in config_sections.items():
@@ -115,15 +115,11 @@ def main():
     test_content = test_file.read_text()
     
     test_classes = {
-        "TestHealthEndpoint": "Health check",
-        "TestConfigEndpoint": "Configuration",
-        "TestStatsEndpoint": "Statistics",
-        "TestRecordAndIngestion": "Document ingestion",
-        "TestRetrieveEndpoint": "RAG retrieval",
-        "TestDocumentManagement": "CRUD operations",
-        "TestVotingAndRanking": "User feedback",
-        "TestLogging": "Usage tracking",
-        "TestEndToEndRAGWorkflow": "Complete workflow",
+        "TestHealthAndConfig": "Health and configuration",
+        "TestRecordAndRetrieve": "Document ingestion and retrieval",
+        "TestDocuments": "CRUD operations",
+        "TestVotingAndLogging": "User feedback and usage tracking",
+        "TestEndToEnd": "Complete workflow",
     }
     
     for class_name, description in test_classes.items():
@@ -180,7 +176,7 @@ def main():
     
     integration_checks = [
         ("Embedding support", api / "app" / "embedding.py", 'def embed_texts'),
-        ("Database session", api / "app" / "db" / "session.py", 'SessionLocal'),
+        ("Database session", api / "app" / "db" / "session.py", 'session_scope'),
         ("Models", api / "app" / "db" / "models.py", 'class CtxDoc'),
         ("CLI ingestion", api / "app" / "cli.py", 'async def ingest_md'),
     ]
@@ -217,9 +213,10 @@ def main():
         print(f"  • {len(examples)} example applications showing integration patterns")
         print("\nNext steps:")
         print("  1. Start services: docker compose up -d --build")
-        print("  2. Run tests: docker compose exec api pytest -v")
-        print("  3. Try examples: python examples/rag_chatbot_example.py")
-        print("  4. Read RAG-GUIDE.md for integration patterns")
+        print("  2. Run migrations: docker compose run --rm migrations")
+        print("  3. Run tests: docker compose run --rm --no-deps api pytest -v")
+        print("  4. Try examples: python examples/rag_chatbot_example.py")
+        print("  5. Read RAG-GUIDE.md for integration patterns")
         return 0
     else:
         print("\n⚠️  SOME CHECKS FAILED")

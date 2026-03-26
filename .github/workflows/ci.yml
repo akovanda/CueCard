@@ -9,66 +9,88 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Prepare environment file
-        run: cp .env.example .env
-
-      - name: Build and start services
         run: |
-          docker compose up -d --build
+          cp .env.example .env
+          mkdir -p .artifacts
+          chmod 0777 .artifacts
+
+      - name: Start database
+        run: |
+          docker compose up -d db
+
+      - name: Run migrations
+        run: |
+          docker compose run --rm migrations
+
+      - name: Run tests with coverage
+        run: |
+          docker compose run --rm --no-deps -v "$PWD/.artifacts:/artifacts" api sh -lc 'pytest --cov-report=xml:/artifacts/coverage.xml'
+
+      - name: Start API and worker for smoke test
+        run: |
+          docker compose up -d --build api worker
 
       - name: Wait for API
         shell: bash
         run: |
-          for i in {1..90}; do
-            # First, try hitting the API directly. If it responds ok:true, we're good.
-            if curl -fsS --retry 3 --retry-all-errors http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
-              echo "API is reachable and healthy"
-              exit 0
-            fi
-            # Fallback to container health as a secondary signal
-            CID=$(docker compose ps -q api)
-            if [[ -n "$CID" ]]; then
-              STATUS=$(docker inspect -f '{{.State.Health.Status}}' "$CID" || echo "unknown")
-            else
-              STATUS="unknown"
-            fi
-            if [[ "$STATUS" == "healthy" ]]; then
-              echo "API container marked healthy"
-              exit 0
-            elif [[ "$STATUS" == "starting" ]]; then
-              echo "API container starting; proceeding to tests"
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
               exit 0
             fi
             sleep 2
           done
-          echo "API did not become healthy in time" >&2
-          docker compose ps
-          docker compose logs api db | tail -n 500
+          docker compose logs api worker db | tail -n 500
           exit 1
 
-      - name: Run tests with coverage
+      - name: Smoke test queue to retrieve
+        shell: bash
         run: |
-          docker compose exec -T api bash -lc 'mkdir -p /tmp/coverage && export COVERAGE_FILE=/tmp/coverage/.coverage && pytest -v'
-          docker compose cp api:/tmp/coverage/coverage.xml coverage.xml || true
+          CUECARD_KEY=$(awk -F= '/^CUECARD_API_KEY=/{print $2}' .env)
+          API_KEY_HEADER=$(awk -F= '/^API_KEY_HEADER=/{print $2}' .env)
+
+          curl -fsS http://localhost:8000/record \
+            -H "${API_KEY_HEADER}: ${CUECARD_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"items":[{"source":"smoke","title":"Smoke Doc","content":"CueCard smoke test content","tags":["smoke"]}]}'
+
+          for i in {1..30}; do
+            BODY=$(curl -fsS http://localhost:8000/retrieve \
+              -H "${API_KEY_HEADER}: ${CUECARD_KEY}" \
+              -H "Content-Type: application/json" \
+              -d '{"goal":"smoke test content","k":1}')
+            if python3 - "$BODY" <<'PY'
+              import json
+              import sys
+
+              payload = json.loads(sys.argv[1])
+              sys.exit(0 if payload.get("snippets") else 1)
+              PY
+            then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs api worker db | tail -n 500
+          exit 1
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v5
         with:
           name: coverage-xml
-          path: coverage.xml
+          path: .artifacts/coverage.xml
           if-no-files-found: warn
 
       - name: Show service logs on failure
         if: failure()
         run: |
-          docker compose logs api db | tail -n 1000
+          docker compose logs api worker db | tail -n 1000
 
   publish:
     runs-on: ubuntu-latest
@@ -76,7 +98,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     env:
       IMAGE_NAME: cuecard
       OWNER: ${{ github.repository_owner }}
@@ -85,14 +106,14 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
 
       - name: Login to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -100,7 +121,7 @@ jobs:
 
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f
         with:
           images: |
             ghcr.io/${{ env.OWNER }}/${{ env.IMAGE_NAME }}
@@ -109,7 +130,7 @@ jobs:
             type=sha,prefix=sha-
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
         with:
           context: ./api
           file: ./api/Dockerfile
@@ -121,4 +142,3 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
           sbom: false
-

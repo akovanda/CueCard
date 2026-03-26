@@ -3,37 +3,53 @@ image:
   tag: "0.2"
   pullPolicy: IfNotPresent
 
+api:
+  replicas: 1
+  resources: {}
+
+worker:
+  replicas: 1
+  resources: {}
+
 service:
   type: ClusterIP
   port: 8000
 
-resources: {}
-#  limits:
-#    cpu: 500m
-#    memory: 512Mi
-#  requests:
-#    cpu: 100m
-#    memory: 128Mi
-
 env:
   EMBEDDING_PROVIDER: "local"
   EMBEDDING_MODEL: "text-embedding-3-small"
-  EMBEDDING_DIM: 1536
   RERANK_WEIGHT: 0.1
   RETRIEVAL_OVERFETCH: 8
+  VOTE_BOOST_WEIGHT: 1.0
+  USAGE_BOOST_WEIGHT: 0.01
+  USAGE_BOOST_TTL_DAYS: 14
   WORKER_POLL_SEC: 2
   WORKER_BATCH: 32
-  # DATABASE_URL defaults to in-cluster service name "db" if you deploy Postgres alongside.
-  DATABASE_URL: ""
+  WORKER_LEASE_SEC: 300
+  CLEANUP_INTERVAL_SEC: 3600
+  CORS_ORIGINS: ""
 
 secretEnv:
+  DATABASE_URL: ""         # required
   OPENAI_API_KEY: ""       # set for openai provider
-  CUECARD_API_KEY: ""      # optional: enable simple header auth
+  CUECARD_API_KEY: ""      # required
 
 security:
   apiKeyHeaderName: "X-API-Key"
 
 podAnnotations: {}
+
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  capabilities:
+    drop: ["ALL"]
 
 nodeSelector: {}
 tolerations: []

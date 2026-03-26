@@ -7,12 +7,25 @@ into CueCard for RAG retrieval.
 """
 
 import asyncio
-import httpx
-import yaml
+import os
+from pathlib import Path
 from typing import Dict, Any
 
+import httpx
+import yaml
+from dotenv import load_dotenv
 
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 CUECARD_API = "http://localhost:8000"
+API_KEY_HEADER = os.getenv("API_KEY_HEADER", "X-API-Key")
+CUECARD_API_KEY = os.getenv("CUECARD_API_KEY")
+
+
+def auth_headers() -> dict[str, str]:
+    if not CUECARD_API_KEY:
+        return {}
+    return {API_KEY_HEADER: CUECARD_API_KEY}
 
 
 # Sample OpenAPI spec (simplified)
@@ -232,7 +245,7 @@ async def ingest_openapi_spec(spec_content: str):
     print(f"\n📚 Ingesting {len(items)} operations...")
     
     # Ingest into CueCard
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         response = await client.post(f"{CUECARD_API}/record", json={
             "items": items
         })
@@ -259,7 +272,7 @@ async def test_retrieval():
         ("How to delete a user?", "deleteUser"),
     ]
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         for query, expected_op_key in test_queries:
             print(f"\n🔍 Query: '{query}'")
             
@@ -287,7 +300,7 @@ async def test_filtering():
     print("Testing Filtering")
     print("="*60)
     
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         # Filter by operation key
         print("\n🔍 Filter by op_key='createUser'")
         response = await client.post(f"{CUECARD_API}/retrieve", json={

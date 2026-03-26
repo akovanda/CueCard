@@ -1,606 +1,300 @@
-"""
-Comprehensive integration tests for CueCard RAG API.
+from __future__ import annotations
 
-These tests validate all endpoints and RAG functionality end-to-end.
-Tests use the local embedding provider to work without API keys.
-"""
+import datetime as dt
 
-import pytest
 import httpx
-import asyncio
-import os
-from typing import AsyncGenerator
-
-# Set environment for testing
-os.environ["EMBEDDING_PROVIDER"] = "local"
-os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL", "postgresql+psycopg://ctx:ctx@db:5432/ctx")
-
-# Test configuration
-API_BASE = "http://localhost:8000"
-TEST_TIMEOUT = 30.0
+import pytest
 
 
-@pytest.fixture
-async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
-    """Async HTTP client for API testing"""
-    async with httpx.AsyncClient(base_url=API_BASE, timeout=TEST_TIMEOUT) as client:
-        yield client
+async def record_and_process(
+    client: httpx.AsyncClient,
+    process_queue,
+    items: list[dict],
+) -> list[int]:
+    response = await client.post("/record", json={"items": items})
+    assert response.status_code == 202
+    queued = response.json()["queued"]
+    processed = await process_queue()
+    assert processed == len(items)
+    return queued
 
 
-class TestHealthEndpoint:
-    """Test health check endpoint"""
-
+class TestHealthAndConfig:
     @pytest.mark.asyncio
     async def test_health(self, client: httpx.AsyncClient):
-        """Health endpoint should return OK"""
         response = await client.get("/health")
         assert response.status_code == 200
-        data = response.json()
-        assert data["ok"] is True
-
-
-class TestConfigEndpoint:
-    """Test configuration endpoint"""
+        assert response.json() == {"ok": True}
 
     @pytest.mark.asyncio
-    async def test_get_config(self, client: httpx.AsyncClient):
-        """Config endpoint should return current configuration"""
+    async def test_config_reflects_derived_embedding_dimension(self, client: httpx.AsyncClient):
         response = await client.get("/config")
         assert response.status_code == 200
-
         config = response.json()
-        assert "embedding" in config
-        assert "retrieval" in config
-        assert "ranking" in config
-        assert "workers" in config
-
-        # Verify structure
-        assert config["embedding"]["provider"] in ["local", "openai"]
+        assert config["embedding"]["provider"] == "local"
+        assert config["embedding"]["model"] == "text-embedding-3-small"
         assert config["embedding"]["dimension"] == 1536
-        assert config["retrieval"]["rerank_weight"] >= 0
-        assert config["ranking"]["vote_boost_weight"] >= 0
-
-
-class TestStatsEndpoint:
-    """Test statistics endpoint"""
+        assert config["workers"]["worker_lease_sec"] > 0
 
     @pytest.mark.asyncio
-    async def test_get_stats(self, client: httpx.AsyncClient):
-        """Stats endpoint should return system statistics"""
+    async def test_stats_empty(self, client: httpx.AsyncClient):
         response = await client.get("/stats")
         assert response.status_code == 200
-
-        stats = response.json()
-        assert "documents" in stats
-        assert "queue" in stats
-        assert "searches" in stats
-        assert "engagement" in stats
-
-        # Verify structure
-        assert "total" in stats["documents"]
-        assert "by_source" in stats["documents"]
-        assert isinstance(stats["documents"]["total"], int)
+        assert response.json()["documents"]["total"] == 0
 
 
-class TestRecordAndIngestion:
-    """Test document ingestion via /record endpoint"""
-
+class TestRecordAndRetrieve:
     @pytest.mark.asyncio
-    async def test_record_single_item(self, client: httpx.AsyncClient):
-        """Should queue a single item for ingestion"""
-        response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": "Test Document",
-                    "content": "This is a test document for RAG testing.",
-                    "tags": ["test", "rag"]
-                }
-            ]
-        })
-        assert response.status_code == 202
-        data = response.json()
-        assert "queued" in data
-        assert len(data["queued"]) == 1
-        assert isinstance(data["queued"][0], int)
-
-    @pytest.mark.asyncio
-    async def test_record_batch_items(self, client: httpx.AsyncClient):
-        """Should queue multiple items for ingestion"""
-        response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": f"Test Doc {i}",
-                    "content": f"Test content for document {i}",
-                    "tags": ["test", "batch"]
-                }
-                for i in range(5)
-            ]
-        })
-        assert response.status_code == 202
-        data = response.json()
-        assert len(data["queued"]) == 5
-
-    @pytest.mark.asyncio
-    async def test_record_with_op_key(self, client: httpx.AsyncClient):
-        """Should queue item with operation key"""
-        response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "openapi",
-                    "op_key": "create_order",
-                    "title": "Create Order API",
-                    "content": "POST /orders - Creates a new order in the system",
-                    "tags": ["api", "orders"]
-                }
-            ]
-        })
-        assert response.status_code == 202
-        data = response.json()
-        assert len(data["queued"]) == 1
-
-
-class TestRetrieveEndpoint:
-    """Test RAG retrieval endpoint"""
-
-    @pytest.fixture
-    async def setup_test_docs(self, client: httpx.AsyncClient):
-        """Setup test documents for retrieval testing"""
-        # Queue test documents
-        await client.post("/record", json={
-            "items": [
+    async def test_record_and_retrieve_basic(self, client: httpx.AsyncClient, process_queue):
+        await record_and_process(
+            client,
+            process_queue,
+            [
                 {
                     "source": "test",
                     "title": "Authentication Guide",
-                    "content": "To authenticate, include your API key in the Authorization header as a Bearer token.",
-                    "tags": ["auth", "security"]
+                    "content": "Authentication requires an API key in the Authorization header.",
+                    "tags": ["auth", "api"],
                 },
                 {
                     "source": "test",
-                    "title": "Rate Limiting",
-                    "content": "API requests are rate limited to 100 requests per minute per user.",
-                    "tags": ["api", "limits"]
+                    "title": "Rate Limits",
+                    "content": "Requests are limited to 100 per minute.",
+                    "tags": ["limits", "api"],
                 },
+            ],
+        )
+
+        response = await client.post(
+            "/retrieve",
+            json={"goal": "Authentication requires an API key in the Authorization header.", "k": 2},
+        )
+        assert response.status_code == 200
+
+        snippets = response.json()["snippets"]
+        assert len(snippets) == 2
+        assert snippets[0]["title"] == "Authentication Guide"
+
+    @pytest.mark.asyncio
+    async def test_retrieve_filters_by_tags_and_op_key(
+        self,
+        client: httpx.AsyncClient,
+        process_queue,
+    ):
+        await record_and_process(
+            client,
+            process_queue,
+            [
                 {
                     "source": "test",
+                    "title": "Create User",
                     "op_key": "create_user",
-                    "title": "Create User API",
-                    "content": "POST /users - Creates a new user account with email and password.",
-                    "tags": ["api", "users"]
-                }
-            ]
-        })
-        # Wait for ingestion to complete
-        await asyncio.sleep(5)
-
-    @pytest.mark.asyncio
-    async def test_retrieve_basic(self, client: httpx.AsyncClient, setup_test_docs):
-        """Should retrieve relevant documents"""
-        response = await client.post("/retrieve", json={
-            "goal": "how to authenticate",
-            "k": 3
-        })
-        assert response.status_code == 200
-        data = response.json()
-        assert "snippets" in data
-        assert isinstance(data["snippets"], list)
-
-        # Should return at least some results
-        assert len(data["snippets"]) >= 0  # May be 0 if ingestion hasn't completed
-
-    @pytest.mark.asyncio
-    async def test_retrieve_with_tags(self, client: httpx.AsyncClient, setup_test_docs):
-        """Should filter results by tags"""
-        response = await client.post("/retrieve", json={
-            "goal": "API information",
-            "tags": ["api"],
-            "k": 5
-        })
-        assert response.status_code == 200
-        data = response.json()
-        assert "snippets" in data
-
-    @pytest.mark.asyncio
-    async def test_retrieve_with_op_key(self, client: httpx.AsyncClient, setup_test_docs):
-        """Should filter results by operation key"""
-        response = await client.post("/retrieve", json={
-            "goal": "create user",
-            "op_key": "create_user",
-            "k": 3
-        })
-        assert response.status_code == 200
-        data = response.json()
-        assert "snippets" in data
-
-    @pytest.mark.asyncio
-    async def test_retrieve_with_role(self, client: httpx.AsyncClient, setup_test_docs):
-        """Should accept role parameter"""
-        response = await client.post("/retrieve", json={
-            "goal": "authentication",
-            "role": "developer",
-            "k": 3
-        })
-        assert response.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_retrieve_content_truncation(self, client: httpx.AsyncClient, setup_test_docs):
-        """Should truncate long content in results"""
-        response = await client.post("/retrieve", json={
-            "goal": "test",
-            "k": 1
-        })
-        assert response.status_code == 200
-        data = response.json()
-        if data["snippets"]:
-            # Content should be truncated to MAX_CHARS (1200)
-            assert len(data["snippets"][0]["content"]) <= 1200
-
-
-class TestDocumentManagement:
-    """Test document management endpoints"""
-
-    @pytest.fixture
-    async def test_doc_id(self, client: httpx.AsyncClient) -> int:
-        """Create a test document and return its ID"""
-        # Queue a document
-        response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": "Management Test Doc",
-                    "content": "This document is for testing management endpoints.",
-                    "tags": ["test", "management"]
-                }
-            ]
-        })
-        assert response.status_code == 202
-
-        # Wait for ingestion
-        await asyncio.sleep(5)
-
-        # Find the document
-        docs_response = await client.get("/documents?source=test&limit=100")
-        docs = docs_response.json()
-
-        # Find our test doc
-        for doc in docs["documents"]:
-            if doc["title"] == "Management Test Doc":
-                return doc["id"]
-
-        pytest.skip("Test document not found - ingestion may not have completed")
-
-    @pytest.mark.asyncio
-    async def test_list_documents(self, client: httpx.AsyncClient):
-        """Should list documents"""
-        response = await client.get("/documents")
-        assert response.status_code == 200
-
-        data = response.json()
-        assert "documents" in data
-        assert "total" in data
-        assert "limit" in data
-        assert "offset" in data
-        assert isinstance(data["documents"], list)
-        assert isinstance(data["total"], int)
-
-    @pytest.mark.asyncio
-    async def test_list_documents_with_filters(self, client: httpx.AsyncClient):
-        """Should filter documents by source and tags"""
-        response = await client.get("/documents?source=test&tags=rag&limit=10")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["limit"] == 10
-
-    @pytest.mark.asyncio
-    async def test_list_documents_pagination(self, client: httpx.AsyncClient):
-        """Should paginate document list"""
-        response = await client.get("/documents?limit=5&offset=0")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["limit"] == 5
-        assert data["offset"] == 0
-
-    @pytest.mark.asyncio
-    async def test_get_document(self, client: httpx.AsyncClient, test_doc_id: int):
-        """Should get a specific document by ID"""
-        response = await client.get(f"/documents/{test_doc_id}")
-        assert response.status_code == 200
-
-        doc = response.json()
-        assert doc["id"] == test_doc_id
-        assert "source" in doc
-        assert "title" in doc
-        assert "content" in doc
-        assert "tags" in doc
-
-    @pytest.mark.asyncio
-    async def test_get_nonexistent_document(self, client: httpx.AsyncClient):
-        """Should return 404 for nonexistent document"""
-        response = await client.get("/documents/999999999")
-        assert response.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_delete_document(self, client: httpx.AsyncClient):
-        """Should delete a document"""
-        # Create a document to delete
-        record_response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": "To Be Deleted",
-                    "content": "This document will be deleted.",
-                    "tags": ["test", "delete"]
-                }
-            ]
-        })
-        assert record_response.status_code == 202
-
-        # Wait for ingestion
-        await asyncio.sleep(5)
-
-        # Find the document
-        docs_response = await client.get("/documents?source=test&limit=100")
-        docs = docs_response.json()
-
-        doc_id = None
-        for doc in docs["documents"]:
-            if doc["title"] == "To Be Deleted":
-                doc_id = doc["id"]
-                break
-
-        if doc_id is None:
-            pytest.skip("Could not find test document - ingestion may not have completed")
-
-        # Delete it
-        delete_response = await client.delete(f"/documents/{doc_id}")
-        assert delete_response.status_code == 200
-        assert delete_response.json()["deleted"] is True
-
-        # Verify it's gone
-        get_response = await client.get(f"/documents/{doc_id}")
-        assert get_response.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_delete_nonexistent_document(self, client: httpx.AsyncClient):
-        """Should return 404 when deleting nonexistent document"""
-        response = await client.delete("/documents/999999999")
-        assert response.status_code == 404
-
-
-class TestVotingAndRanking:
-    """Test voting and ranking functionality"""
-
-    @pytest.fixture
-    async def votable_doc_id(self, client: httpx.AsyncClient) -> int:
-        """Create a document for voting tests"""
-        response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": "Votable Document",
-                    "content": "This document can receive votes.",
-                    "tags": ["test", "voting"]
-                }
-            ]
-        })
-        assert response.status_code == 202
-
-        await asyncio.sleep(5)
-
-        docs_response = await client.get("/documents?source=test&limit=100")
-        docs = docs_response.json()
-
-        for doc in docs["documents"]:
-            if doc["title"] == "Votable Document":
-                return doc["id"]
-
-        pytest.skip("Test document not found")
-
-    @pytest.mark.asyncio
-    async def test_vote_for_document(self, client: httpx.AsyncClient, votable_doc_id: int):
-        """Should vote for a document"""
-        response = await client.post("/vote", json={
-            "doc_id": votable_doc_id,
-            "increment": 1
-        })
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["doc_id"] == votable_doc_id
-        assert "vote_count" in data
-        assert data["vote_count"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_vote_multiple_times(self, client: httpx.AsyncClient, votable_doc_id: int):
-        """Should accumulate votes"""
-        # First vote
-        response1 = await client.post("/vote", json={
-            "doc_id": votable_doc_id,
-            "increment": 1
-        })
-        count1 = response1.json()["vote_count"]
-
-        # Second vote
-        response2 = await client.post("/vote", json={
-            "doc_id": votable_doc_id,
-            "increment": 1
-        })
-        count2 = response2.json()["vote_count"]
-
-        assert count2 > count1
-
-    @pytest.mark.asyncio
-    async def test_negative_vote(self, client: httpx.AsyncClient, votable_doc_id: int):
-        """Should accept negative votes"""
-        response = await client.post("/vote", json={
-            "doc_id": votable_doc_id,
-            "increment": -1
-        })
-        assert response.status_code == 200
-
-
-class TestLogging:
-    """Test logging functionality"""
-
-    @pytest.mark.asyncio
-    async def test_log_tool_use(self, client: httpx.AsyncClient):
-        """Should log tool usage"""
-        response = await client.post("/log", json={
-            "op_key": "test_operation",
-            "doc_ids": [1, 2, 3],
-            "status": 200,
-            "latency_ms": 150
-        })
-        assert response.status_code == 200
-
-        data = response.json()
-        assert "logged" in data
-        assert data["logged"] == 3  # One log entry per doc_id
-
-    @pytest.mark.asyncio
-    async def test_log_without_doc_ids(self, client: httpx.AsyncClient):
-        """Should log even without doc IDs"""
-        response = await client.post("/log", json={
-            "op_key": "test_operation",
-            "status": 200
-        })
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["logged"] >= 0
-
-    @pytest.mark.asyncio
-    async def test_logs_endpoint_filters_and_pagination(self, client: httpx.AsyncClient):
-        """Should query raw logs by time range and filters"""
-        # Generate some logs
-        await client.post("/log", json={"op_key": "chat", "status": 200})
-        await asyncio.sleep(0.1)
-        await client.post("/log", json={"op_key": "chat", "status": 500})
-
-        # Query with op_key filter
-        resp = await client.get("/logs?op_key=chat&limit=1")
-        assert resp.status_code == 200
-        payload = resp.json()
-        assert "logs" in payload
-        assert payload["limit"] == 1
-        assert isinstance(payload["total"], int)
-        if payload["logs"]:
-            assert payload["logs"][0]["op_key"] == "chat"
-
-        # Query with time range (ISO format)
-        from datetime import datetime, timedelta
-        now = datetime.utcnow()
-        start_iso = (now - timedelta(minutes=10)).isoformat() + "Z"
-        end_iso = now.isoformat() + "Z"
-        resp2 = await client.get(f"/logs?op_key=chat&start_time={start_iso}&end_time={end_iso}")
-        assert resp2.status_code == 200
-
-
-class TestEndToEndRAGWorkflow:
-    """Test complete RAG workflow from ingestion to retrieval to feedback"""
-
-    @pytest.mark.asyncio
-    async def test_complete_rag_workflow(self, client: httpx.AsyncClient):
-        """Test complete RAG workflow: ingest -> retrieve -> log -> vote"""
-
-        # 1. Ingest documents
-        ingest_response = await client.post("/record", json={
-            "items": [
-                {
-                    "source": "test",
-                    "title": "E2E Test Doc 1",
-                    "content": "The quick brown fox jumps over the lazy dog.",
-                    "tags": ["e2e", "test"]
+                    "content": "POST /users creates a user.",
+                    "tags": ["users", "api"],
                 },
                 {
                     "source": "test",
-                    "title": "E2E Test Doc 2",
-                    "content": "Python is a high-level programming language.",
-                    "tags": ["e2e", "test"]
-                }
-            ]
-        })
-        assert ingest_response.status_code == 202
+                    "title": "Delete User",
+                    "op_key": "delete_user",
+                    "content": "DELETE /users/{id} deletes a user.",
+                    "tags": ["users", "dangerous"],
+                },
+            ],
+        )
 
-        # Wait for ingestion
-        await asyncio.sleep(5)
+        by_tag = await client.post("/retrieve", json={"goal": "user", "tags": ["api"], "k": 5})
+        assert by_tag.status_code == 200
+        assert [snippet["title"] for snippet in by_tag.json()["snippets"]] == ["Create User"]
 
-        # 2. Retrieve documents
-        retrieve_response = await client.post("/retrieve", json={
-            "goal": "programming language",
-            "tags": ["e2e"],
-            "k": 5
-        })
-        assert retrieve_response.status_code == 200
-        snippets = retrieve_response.json()["snippets"]
-
-        if not snippets:
-            pytest.skip("No snippets retrieved - ingestion may not have completed")
-
-        # 3. Log the usage
-        doc_ids = [s["id"] for s in snippets]
-        log_response = await client.post("/log", json={
-            "op_key": "e2e_test",
-            "doc_ids": doc_ids,
-            "status": 200,
-            "latency_ms": 100
-        })
-        assert log_response.status_code == 200
-
-        # 4. Vote for helpful snippet
-        if doc_ids:
-            vote_response = await client.post("/vote", json={
-                "doc_id": doc_ids[0],
-                "increment": 1
-            })
-            assert vote_response.status_code == 200
-
-        # 5. Verify stats updated
-        stats_response = await client.get("/stats")
-        assert stats_response.status_code == 200
-        stats = stats_response.json()
-        assert stats["documents"]["total"] > 0
-        assert stats["searches"]["total"] > 0
-
-
-class TestErrorHandling:
-    """Test error handling and edge cases"""
+        by_op = await client.post(
+            "/retrieve",
+            json={"goal": "delete a user", "op_key": "delete_user", "k": 5},
+        )
+        assert by_op.status_code == 200
+        snippets = by_op.json()["snippets"]
+        assert len(snippets) == 1
+        assert snippets[0]["op_key"] == "delete_user"
 
     @pytest.mark.asyncio
-    async def test_retrieve_with_invalid_k(self, client: httpx.AsyncClient):
-        """Should handle invalid k parameter gracefully"""
-        response = await client.post("/retrieve", json={
-            "goal": "test",
-            "k": 0  # Invalid
-        })
-        # Should still work (backend handles this)
-        assert response.status_code in [200, 422]
-
-    @pytest.mark.asyncio
-    async def test_record_empty_content(self, client: httpx.AsyncClient):
-        """Should reject empty content"""
-        response = await client.post("/record", json={
-            "items": [
+    async def test_retrieve_truncates_content(self, client: httpx.AsyncClient, process_queue):
+        await record_and_process(
+            client,
+            process_queue,
+            [
                 {
                     "source": "test",
-                    "content": ""  # Empty content
+                    "title": "Long Doc",
+                    "content": "x" * 5000,
+                    "tags": ["long"],
                 }
-            ]
-        })
-        # FastAPI validation should catch this
-        assert response.status_code in [200, 202, 422]
+            ],
+        )
+
+        response = await client.post("/retrieve", json={"goal": "x", "k": 1})
+        assert response.status_code == 200
+        snippet = response.json()["snippets"][0]
+        assert len(snippet["content"]) == 1200
 
     @pytest.mark.asyncio
-    async def test_vote_for_nonexistent_doc(self, client: httpx.AsyncClient):
-        """Should handle voting for nonexistent document"""
-        response = await client.post("/vote", json={
-            "doc_id": 999999999,
-            "increment": 1
-        })
-        # Should succeed (creates new vote record)
-        assert response.status_code == 200
+    async def test_retrieve_rejects_invalid_k(self, client: httpx.AsyncClient):
+        response = await client.post("/retrieve", json={"goal": "x", "k": 0})
+        assert response.status_code == 422
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--asyncio-mode=auto"])
+class TestDocuments:
+    @pytest.mark.asyncio
+    async def test_documents_cycle(self, client: httpx.AsyncClient, process_queue):
+        await record_and_process(
+            client,
+            process_queue,
+            [
+                {
+                    "source": "md",
+                    "title": "One",
+                    "content": "Alpha",
+                    "tags": ["alpha", "shared"],
+                },
+                {
+                    "source": "md",
+                    "title": "Two",
+                    "content": "Beta",
+                    "tags": ["beta", "shared"],
+                },
+            ],
+        )
+
+        listed = await client.get("/documents?source=md&tags=shared&limit=10")
+        assert listed.status_code == 200
+        payload = listed.json()
+        assert payload["total"] == 2
+        doc_id = payload["documents"][0]["id"]
+
+        fetched = await client.get(f"/documents/{doc_id}")
+        assert fetched.status_code == 200
+        assert fetched.json()["id"] == doc_id
+
+        deleted = await client.delete(f"/documents/{doc_id}")
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True
+
+        missing = await client.get(f"/documents/{doc_id}")
+        assert missing.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_documents_reject_invalid_limit(self, client: httpx.AsyncClient):
+        response = await client.get("/documents?limit=0")
+        assert response.status_code == 422
+
+
+class TestVotingAndLogging:
+    @pytest.mark.asyncio
+    async def test_vote_and_log_flow(self, client: httpx.AsyncClient, process_queue):
+        await record_and_process(
+            client,
+            process_queue,
+            [
+                {
+                    "source": "test",
+                    "title": "Helpful Doc",
+                    "content": "This doc can be voted on.",
+                    "tags": ["vote"],
+                }
+            ],
+        )
+        doc_id = (await client.get("/documents")).json()["documents"][0]["id"]
+
+        vote = await client.post("/vote", json={"doc_id": doc_id, "increment": 2})
+        assert vote.status_code == 200
+        assert vote.json()["vote_count"] == 2
+
+        logged = await client.post(
+            "/log",
+            json={"op_key": "chat::session", "doc_ids": [doc_id], "status": 200, "latency_ms": 45},
+        )
+        assert logged.status_code == 200
+        assert logged.json()["logged"] == 1
+
+        logs = await client.get("/logs?op_key=chat::session&limit=10")
+        assert logs.status_code == 200
+        payload = logs.json()
+        assert payload["total"] == 1
+        assert payload["logs"][0]["doc_id"] == doc_id
+
+    @pytest.mark.asyncio
+    async def test_vote_rejects_negative_increment(self, client: httpx.AsyncClient):
+        response = await client.post("/vote", json={"doc_id": 1, "increment": -1})
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_vote_rejects_missing_document(self, client: httpx.AsyncClient):
+        response = await client.post("/vote", json={"doc_id": 9999, "increment": 1})
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_logs_reject_invalid_timestamp(self, client: httpx.AsyncClient):
+        response = await client.get("/logs?start_time=not-a-timestamp")
+        assert response.status_code == 400
+
+
+class TestEndToEnd:
+    @pytest.mark.asyncio
+    async def test_complete_rag_workflow(self, client: httpx.AsyncClient, process_queue):
+        await record_and_process(
+            client,
+            process_queue,
+            [
+                {
+                    "source": "test",
+                    "title": "Create Orders",
+                    "op_key": "create_order",
+                    "content": "POST /orders creates a new order with line items.",
+                    "tags": ["orders", "api"],
+                },
+                {
+                    "source": "test",
+                    "title": "Order Authentication",
+                    "content": "You must send a bearer token before creating orders.",
+                    "tags": ["orders", "auth"],
+                },
+            ],
+        )
+
+        retrieval = await client.post(
+            "/retrieve",
+            json={"goal": "how do I create an authenticated order", "k": 2},
+        )
+        assert retrieval.status_code == 200
+        snippets = retrieval.json()["snippets"]
+        assert len(snippets) == 2
+
+        log_response = await client.post(
+            "/log",
+            json={
+                "op_key": "workflow::1",
+                "doc_ids": [snippet["id"] for snippet in snippets],
+                "status": 200,
+                "latency_ms": 80,
+            },
+        )
+        assert log_response.status_code == 200
+        assert log_response.json()["logged"] == 2
+
+        vote_response = await client.post(
+            "/vote",
+            json={"doc_id": snippets[0]["id"], "increment": 1},
+        )
+        assert vote_response.status_code == 200
+
+        now = dt.datetime.now(dt.timezone.utc)
+        start = (now - dt.timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+        end = now.isoformat().replace("+00:00", "Z")
+        logs = await client.get(f"/logs?op_key=workflow::1&start_time={start}&end_time={end}")
+        assert logs.status_code == 200
+        assert logs.json()["total"] == 2
+
+        stats = await client.get("/stats")
+        assert stats.status_code == 200
+        payload = stats.json()
+        assert payload["documents"]["total"] == 2
+        assert payload["searches"]["total"] == 2
+        assert payload["engagement"]["total_votes"] == 1

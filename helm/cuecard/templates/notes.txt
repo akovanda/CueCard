@@ -1,7 +1,9 @@
 
 1. Get the service URL by running these commands:
-  export POD=$(kubectl get pods -l "app.kubernetes.io/name={{ include "cuecard.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
-  kubectl port-forward $POD 8000:8000
+  kubectl port-forward svc/{{ include "cuecard.fullname" . }} 8000:{{ .Values.service.port }}
 
 2. Test:
   curl -s http://localhost:8000/health
+
+3. Authenticated request example:
+  curl -s http://localhost:8000/config -H "{{ .Values.security.apiKeyHeaderName }}: <your cuecard api key>"

@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cuecard.fullname" . }}-api
+  name: {{ include "cuecard.fullname" . }}-worker
   labels:
     app.kubernetes.io/name: {{ include "cuecard.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/component: api
+    app.kubernetes.io/component: worker
 spec:
-  replicas: {{ .Values.api.replicas }}
+  replicas: {{ .Values.worker.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "cuecard.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: api
+      app.kubernetes.io/component: worker
   template:
     metadata:
       labels:
         app.kubernetes.io/name: {{ include "cuecard.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
-        app.kubernetes.io/component: api
+        app.kubernetes.io/component: worker
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
@@ -28,26 +28,16 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: cuecard-api
+        - name: cuecard-worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "app.worker"]
           envFrom:
             - configMapRef:
                 name: {{ include "cuecard.fullname" . }}
             - secretRef:
                 name: {{ include "cuecard.fullname" . }}-secret
-          ports:
-            - containerPort: 8000
-              name: http
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          livenessProbe:
-            httpGet: { path: /health, port: http }
-            initialDelaySeconds: 10
-            periodSeconds: 15
-          readinessProbe:
-            httpGet: { path: /health, port: http }
-            initialDelaySeconds: 5
-            periodSeconds: 10
           resources:
-            {{- toYaml .Values.api.resources | nindent 12 }}
+            {{- toYaml .Values.worker.resources | nindent 12 }}

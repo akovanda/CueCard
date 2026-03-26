@@ -1,34 +1,27 @@
-# CueCard (v0.2)
+# CueCard
 
 [![CI](https://github.com/akovanda/CueCard/actions/workflows/ci.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/ci.yml)
 [![Publish](https://github.com/akovanda/CueCard/actions/workflows/publish.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/publish.yml)
 [![Release](https://img.shields.io/github/v/release/akovanda/CueCard?sort=semver)](https://github.com/akovanda/CueCard/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A tiny sidecar that ingests docs and snippets (Markdown today; OpenAPI next), stores chunks in
-Postgres + pgvector, and retrieves the top‑K relevant snippets to inject into an LLM
-tool-use prompt right before an API call.
+A sidecar retrieval service for LLM applications. CueCard ingests docs and snippets,
+stores embeddings in Postgres + pgvector, and returns the best matching context right
+before a model call or tool execution.
 
-## What's included
-- Dockerized stack: Postgres (with pgvector), API service (FastAPI), Alembic migrations
-- SQLAlchemy 2.0 ORM, Psycopg 3 driver, `pgvector` SQLAlchemy type
-- Deterministic local embeddings fallback (works without API keys)
-- CLI to ingest Markdown: `ingest-md`
-- **Complete RAG API endpoints:**
-  - `/retrieve` - Get the best K snippets by semantic search (+ optional filters)
-  - `/record` - Queue items for async ingestion
-  - `/documents` - List, get, and delete documents
-  - `/vote` - Vote for helpful snippets (permanent boost)
-  - `/log` - Log retrieval usage for analytics
-  - `/stats` - System statistics and usage metrics
-  - `/config` - View current configuration
-- Voting/boosting system for ranking snippets based on user feedback and usage
-- Comprehensive test suite with pytest
-- Example code for RAG integration (chatbot, OpenAPI ingestion)
+## What’s included
+- FastAPI API with typed responses for retrieval, ingestion, analytics, and document management
+- Dedicated worker process for queue ingestion and expired usage-boost cleanup
+- Alembic migrations and pgvector-backed search in Postgres
+- Deterministic local embeddings fallback for offline development and tests
+- Simple API-key auth, CORS configuration, and secure-by-default deploy examples
+- CLI Markdown ingestion with `python -m app.cli ingest-md`
+- Containerized tests, Helm chart, static Kubernetes manifests, and CI workflows
+- Working examples for chatbot retrieval, chat-history timelines, and OpenAPI ingestion
 
 ## Quick start
 ```bash
-# 0) Copy the sample env and edit as needed (URLs/keys)
+# 0) Copy the sample env
 cp .env.example .env
 
 # 1) Build and run
@@ -38,59 +31,53 @@ docker compose up -d --build
 docker compose exec api python -m app.cli ingest-md --md /data/docs --tag howto --tag gotcha
 
 # 3) Retrieve context
-curl -s http://localhost:8000/retrieve -H "Content-Type: application/json"   -d '{"goal":"how do I page through orders","op_key":null,"role":"support_agent","k":3}' | jq
+curl -s http://localhost:8000/retrieve \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"goal":"how do I page through orders","role":"support_agent","k":3}' | jq
 
-# 4) Vote for a snippet as "good" (permanent boost)
-curl -s http://localhost:8000/vote -H "Content-Type: application/json" -d '{"doc_id":1,"increment":1}' | jq
+# 4) Log usage and vote on a helpful result
+curl -s -X POST http://localhost:8000/log \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"op_key":"chat::session-123","doc_ids":[1,2],"status":200,"latency_ms":80}' | jq
 
-# 5) View system stats
-curl -s http://localhost:8000/stats | jq
-
-# 6) List documents
-curl -s "http://localhost:8000/documents?limit=10" | jq
-
-# 7) Log usage (associate with a session via op_key)
-curl -s -X POST http://localhost:8000/log -H "Content-Type: application/json" -d '{"op_key":"chat::session-123","doc_ids":[1,2],"status":200,"latency_ms":80}' | jq
-
-# 8) Query raw logs for a session
-START=$(date -u -v-10M '+%Y-%m-%dT%H:%M:%SZ')
-END=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=$START&end_time=$END&limit=50" | jq
+curl -s http://localhost:8000/vote \
+  -H "X-API-Key: change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"doc_id":1,"increment":1}' | jq
 ```
 
 > **Note:** If `OPENAI_API_KEY` is set in `.env`, real embeddings are used.
 > Otherwise a deterministic local fallback is used so demos/tests work offline.
+> Embedding dimension is derived from `EMBEDDING_MODEL` and validated against the database schema on startup.
+> The sample `.env.example` also enables API key auth with `X-API-Key: change-me`; rotate that value before shared use.
 
-## Design
-- **DB:** Postgres with `pgvector`, maintained via **Alembic** migrations.
-- **Models:** SQLAlchemy 2.0 (see `api/app/db/models.py`).
-- **Migrations:** `api/alembic` with an initial revision creating `ctx_doc` and HNSW index.
-- **Service:** FastAPI app with complete RAG endpoints (see API reference below) and CLI (`ingest-md`).
-- **Voting/Boosting:**
-  - **Permanent boosts**: Users can vote for snippets via `/vote` endpoint. Each vote increments a permanent boost counter.
-  - **Temporary boosts**: Each time a snippet is returned in search results, it receives a tiny temporary boost that expires after a configurable period (default: 14 days).
-  - **Background cleanup**: A background task periodically removes expired temporary boosts.
+## Core endpoints
+- `GET /health`
+- `POST /retrieve`
+- `POST /record`
+- `POST /log`
+- `POST /vote`
+- `GET /logs`
+- `GET /documents`
+- `GET /documents/{id}`
+- `DELETE /documents/{id}`
+- `GET /stats`
+- `GET /config`
 
-## API Reference
+## Retrieval model
+- Retrieval is vector-first, then re-ranked with optional usage and vote boosts.
+- `/record` is asynchronous: the API queues work and the worker writes embeddings/doc rows.
+- `/log` records which documents were actually used so ranking can learn from real traffic.
+- `/vote` is an explicit positive feedback signal with `increment >= 1`.
+- `/config` exposes effective runtime settings but never returns secrets.
 
-### Core RAG Endpoints
-- `GET /health` - Health check
-- `POST /retrieve` - Retrieve relevant snippets (main RAG operation)
-- `POST /record` - Queue documents for async ingestion
-- `POST /log` - Log retrieval usage for analytics
-- `POST /vote` - Vote for helpful snippets
-- `GET /logs` - Query raw tool logs by time range and filters (for UI timelines)
-
-### Document Management
-- `GET /documents` - List documents with filtering (source, op_key, tags)
-- `GET /documents/{id}` - Get specific document details
-- `DELETE /documents/{id}` - Delete a document
-
-### Analytics & Configuration
-- `GET /stats` - System usage statistics
-- `GET /config` - Current configuration settings
-
-For detailed API documentation and integration patterns, see [RAG-GUIDE.md](RAG-GUIDE.md).
+## More docs
+- [RAG-GUIDE.md](RAG-GUIDE.md): integration patterns and API examples
+- [examples/README.md](examples/README.md): runnable example scripts and curl snippets
+- [README-DEPLOY.md](README-DEPLOY.md): Helm, Compose sidecar, and production notes
+- [CONTRIBUTING.md](CONTRIBUTING.md): local development and test workflow
 
 ### /logs endpoint
 Use `/logs` to retrieve raw usage events for UIs (e.g., chatbot history) and analytics:
@@ -105,7 +92,7 @@ Query params:
 
 Example:
 ```bash
-curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=2025-11-13T15:00:00Z&end_time=2025-11-13T15:30:00Z&limit=50" | jq
+curl -s "http://localhost:8000/logs?op_key=chat::session-123&start_time=2025-11-13T15:00:00Z&end_time=2025-11-13T15:30:00Z&limit=50" -H "X-API-Key: change-me" | jq
 ```
 Response shape:
 ```json
@@ -122,10 +109,9 @@ Response shape:
 ## Examples
 
 See the `examples/` directory for:
-- **RAG Chatbot Example**: Complete workflow from ingestion to retrieval to feedback
-- **Chat History Example**: Query raw logs with `/logs` to render a session timeline
-- **OpenAPI Ingestion Example**: Parse and ingest API specifications
-- **Integration Patterns**: Best practices for using CueCard in your RAG pipeline
+- **RAG Chatbot Example**: queue docs, retrieve context, log usage, and vote
+- **Chat History Example**: use `/logs` to render a session timeline
+- **OpenAPI Ingestion Example**: parse and ingest OpenAPI operations for retrieval
 
 Run examples:
 ```bash
@@ -133,14 +119,6 @@ python examples/rag_chatbot_example.py
 python examples/chat_history_example.py
 python examples/openapi_ingestion_example.py
 ```
-
-## Roadmap
-- ✅ Complete RAG API endpoints
-- ✅ Comprehensive testing infrastructure
-- ✅ Documentation and examples
-- ✅ GitHub Actions to build and publish an image to GHCR
-- OpenAPI/GraphQL/Postman ingestion (examples provided, CLI coming soon)
-- Goal-aware summarization to enforce a 1–2KB snippet budget
 
 ## Contributing
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up your environment, run tests, and submit PRs. Be kind and review our [Code of Conduct](CODE_OF_CONDUCT.md).

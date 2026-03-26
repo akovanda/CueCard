@@ -11,16 +11,29 @@ This example demonstrates how a chatbot UI can:
 It uses the new GET /logs endpoint with filters and pagination.
 """
 import asyncio
-import httpx
 from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
 
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 CUECARD_API = "http://localhost:8000"
 SESSION_OP_KEY = f"chat::session-{int(datetime.now().timestamp())}"
+API_KEY_HEADER = os.getenv("API_KEY_HEADER", "X-API-Key")
+CUECARD_API_KEY = os.getenv("CUECARD_API_KEY")
+
+
+def auth_headers() -> dict[str, str]:
+    if not CUECARD_API_KEY:
+        return {}
+    return {API_KEY_HEADER: CUECARD_API_KEY}
 
 
 async def ensure_docs():
     """Ingest a small set of docs so retrieval has substance."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         resp = await client.post(f"{CUECARD_API}/record", json={
             "items": [
                 {
@@ -43,7 +56,7 @@ async def ensure_docs():
 
 async def ask(question: str) -> list:
     """Retrieve context for a question and log usage with op_key scoped to session."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         r = await client.post(f"{CUECARD_API}/retrieve", json={
             "goal": question,
             "op_key": None,
@@ -70,7 +83,7 @@ async def show_timeline(start: datetime | None = None, end: datetime | None = No
     start_iso = st.isoformat().replace("+00:00", "Z")
     end_iso = et.isoformat().replace("+00:00", "Z")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(headers=auth_headers()) as client:
         # Filter by op_key and time range
         url = (
             f"{CUECARD_API}/logs?op_key={SESSION_OP_KEY}"
@@ -116,4 +129,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

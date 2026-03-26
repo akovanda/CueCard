@@ -13,30 +13,34 @@ class Base(DeclarativeBase):
 class CtxDoc(Base):
     __tablename__ = "ctx_doc"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     source: Mapped[str] = mapped_column(String(24), nullable=False)   # openapi|graphql|postman|md|...
     op_key: Mapped[Optional[str]] = mapped_column(String(256))
     title: Mapped[Optional[str]] = mapped_column(String(256))
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=[])
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list, server_default="{}")
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
 
 class IngestQueue(Base):
     __tablename__ = "ingest_queue"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     source: Mapped[str] = mapped_column(String(24), nullable=False)
     op_key: Mapped[Optional[str]] = mapped_column(String(256))
     title: Mapped[Optional[str]] = mapped_column(String(256))
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=[])
+    tags: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), default=list, server_default="{}")
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|processing|done|error
     error_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    leased_until: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 class ToolLog(Base):
     __tablename__ = "tool_log"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     op_key: Mapped[Optional[str]] = mapped_column(String(256))
     doc_id: Mapped[Optional[int]] = mapped_column(BigInteger)  # references ctx_doc.id (not strict FK)
     status: Mapped[Optional[int]] = mapped_column(Integer)
@@ -48,7 +52,7 @@ class DocVote(Base):
     """Permanent boost votes - when user marks a doc as 'good'"""
     __tablename__ = "doc_vote"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)  # references ctx_doc.id
     vote_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # cumulative positive votes
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())
@@ -58,7 +62,7 @@ class DocUsageBoost(Base):
     """Temporary boost from search usage - ages off over time"""
     __tablename__ = "doc_usage_boost"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False)  # references ctx_doc.id
     boost_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # number of times returned in search
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now())

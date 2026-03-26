@@ -137,7 +137,6 @@ def main():
         'DATABASE_URL',
         'EMBEDDING_PROVIDER',
         'EMBEDDING_MODEL',
-        'EMBEDDING_DIM',
         'RERANK_WEIGHT',
         'RETRIEVAL_OVERFETCH',
         'VOTE_BOOST_WEIGHT',
@@ -145,6 +144,7 @@ def main():
         'USAGE_BOOST_TTL_DAYS',
         'WORKER_POLL_SEC',
         'WORKER_BATCH',
+        'WORKER_LEASE_SEC',
         'CLEANUP_INTERVAL_SEC',
     ]
     
@@ -155,11 +155,11 @@ def main():
         print(f"  ✗ Missing configs: {missing}")
         all_passed = False
     
-    # 7. Check requirements.txt has test dependencies
+    # 7. Check test dependencies file
     print("\n7. Checking Dependencies...")
     deps = ['pytest', 'pytest-asyncio']
     
-    valid, missing = check_file_has_content(api_dir / "requirements.txt", deps)
+    valid, missing = check_file_has_content(api_dir / "requirements-dev.txt", deps)
     if valid:
         print(f"  ✓ Test dependencies added")
     else:
@@ -173,8 +173,9 @@ def main():
         print("\nThe RAG enhancements are ready for testing.")
         print("\nNext steps:")
         print("  1. Start the service: docker compose up -d --build")
-        print("  2. Run the tests: docker compose exec api pytest -v")
-        print("  3. Try the examples: python examples/rag_chatbot_example.py")
+        print("  2. Run migrations: docker compose run --rm migrations")
+        print("  3. Run the tests: docker compose run --rm --no-deps api pytest -v")
+        print("  4. Try the examples: python examples/rag_chatbot_example.py")
         return 0
     else:
         print("❌ Some validations failed")
