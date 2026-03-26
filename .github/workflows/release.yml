@@ -18,17 +18,17 @@ jobs:
         id: get_tag
         run: |
           TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "latest=$TAG" >> $GITHUB_OUTPUT
+          echo "latest=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Compute next minor
         id: next
         run: |
           RAW="${{ steps.get_tag.outputs.latest }}"
           STRIPPED=${RAW#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<<"$STRIPPED"
+          IFS='.' read -r MAJOR MINOR _ <<<"$STRIPPED"
           NEXT_MINOR=$((MINOR + 1))
           NEW_TAG="v${MAJOR}.${NEXT_MINOR}.0"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Create tag if not exists
         run: |
@@ -39,5 +39,5 @@ jobs:
           fi
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag ${{ steps.next.outputs.tag }}
-          git push origin ${{ steps.next.outputs.tag }}
+          git tag "${{ steps.next.outputs.tag }}"
+          git push origin "${{ steps.next.outputs.tag }}"

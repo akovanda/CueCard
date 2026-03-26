@@ -31,7 +31,10 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          docker compose run --rm --no-deps -v "$PWD/.artifacts:/artifacts" api sh -lc 'pytest --cov-report=xml:/artifacts/coverage.xml'
+          docker compose run --rm --no-deps \
+            -e COVERAGE_FILE=/tmp/.coverage \
+            -v "$PWD/.artifacts:/artifacts" \
+            api pytest --cov-report=xml:/artifacts/coverage.xml
 
       - name: Start API and worker for smoke test
         run: |
@@ -40,7 +43,7 @@ jobs:
       - name: Wait for API
         shell: bash
         run: |
-          for i in {1..60}; do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:8000/health | grep -q '"ok":[[:space:]]*true'; then
               exit 0
             fi
@@ -52,6 +55,7 @@ jobs:
       - name: Smoke test queue to retrieve
         shell: bash
         run: |
+          set -euo pipefail
           CUECARD_KEY=$(awk -F= '/^CUECARD_API_KEY=/{print $2}' .env)
           API_KEY_HEADER=$(awk -F= '/^API_KEY_HEADER=/{print $2}' .env)
 
@@ -60,19 +64,12 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"items":[{"source":"smoke","title":"Smoke Doc","content":"CueCard smoke test content","tags":["smoke"]}]}'
 
-          for i in {1..30}; do
+          for _ in $(seq 1 30); do
             BODY=$(curl -fsS http://localhost:8000/retrieve \
               -H "${API_KEY_HEADER}: ${CUECARD_KEY}" \
               -H "Content-Type: application/json" \
               -d '{"goal":"smoke test content","k":1}')
-            if python3 - "$BODY" <<'PY'
-              import json
-              import sys
-
-              payload = json.loads(sys.argv[1])
-              sys.exit(0 if payload.get("snippets") else 1)
-              PY
-            then
+            if python3 -c 'import json, sys; sys.exit(0 if json.loads(sys.argv[1]).get("snippets") else 1)' "$BODY"; then
               exit 0
             fi
             sleep 1

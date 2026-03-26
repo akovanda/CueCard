@@ -31,7 +31,7 @@ docker compose run --rm migrations
 Run tests (inside containers):
 
 ```bash
-docker compose run --rm --no-deps api pytest -v
+docker compose run --rm --no-deps -e COVERAGE_FILE=/tmp/.coverage api pytest -v
 ```
 
 CI writes coverage output to `.artifacts/coverage.xml` so local and CI test runs do not dirty tracked files.
@@ -45,7 +45,7 @@ Useful commands:
 - Create a feature branch from `main`.
 - Keep PRs focused and small; include tests when changing behavior.
 - Update docs if user-visible behavior or config changes.
-- Ensure `docker compose run --rm --no-deps api pytest -v` passes.
+- Ensure `docker compose run --rm --no-deps -e COVERAGE_FILE=/tmp/.coverage api pytest -v` passes.
 
 ## Commit style
 Use clear, descriptive commits. Example prefixes: feat, fix, docs, chore, test, refactor.
