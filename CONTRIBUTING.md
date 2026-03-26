@@ -62,4 +62,4 @@ When filing an issue, include:
 - Environment (OS, Docker, commit/tag)
 
 ## Releasing
-We tag releases as `vX.Y.Z`. Images are published via GitHub Actions to GHCR on tag push.
+Pushes to `main` trigger `.github/workflows/release.yml`, which creates the next patch tag `vX.Y.Z`, publishes `ghcr.io/<owner>/cuecard:X.Y.Z` and `:latest`, and creates a GitHub Release. Use `workflow_dispatch` on the same workflow if you need to rerun a release manually.

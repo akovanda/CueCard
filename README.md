@@ -1,7 +1,6 @@
 # CueCard
 
 [![CI](https://github.com/akovanda/CueCard/actions/workflows/ci.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/ci.yml)
-[![Publish](https://github.com/akovanda/CueCard/actions/workflows/publish.yml/badge.svg)](https://github.com/akovanda/CueCard/actions/workflows/publish.yml)
 [![Release](https://img.shields.io/github/v/release/akovanda/CueCard?sort=semver)](https://github.com/akovanda/CueCard/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -17,6 +16,7 @@ before a model call or tool execution.
 - Simple API-key auth, CORS configuration, and secure-by-default deploy examples
 - CLI Markdown ingestion with `python -m app.cli ingest-md`
 - Containerized tests, Helm chart, static Kubernetes manifests, and CI workflows
+- Automatic patch releases from `main`, with GHCR image publishing and GitHub Releases
 - Working examples for chatbot retrieval, chat-history timelines, and OpenAPI ingestion
 
 ## Quick start

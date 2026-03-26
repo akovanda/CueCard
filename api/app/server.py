@@ -47,6 +47,7 @@ from .schemas import (
     WorkerConfig,
 )
 from .settings import Settings, load_settings
+from .version import __version__
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -72,7 +73,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     app = FastAPI(
         title="CueCard",
-        version="0.2",
+        version=__version__,
         dependencies=[Depends(api_key_auth)],
         lifespan=lifespan,
     )

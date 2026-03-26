@@ -7,20 +7,19 @@ This guide covers the supported deployment surfaces for CueCard:
 - Static Kubernetes manifests for a simple starting point
 
 ## Images
-- `ghcr.io/<your-org>/cuecard:0.2` and `:latest`
+- `ghcr.io/<your-org>/cuecard:<release-version>` and `:latest`
 
 > Uses the Dockerfile already in your repo (`api/Dockerfile`).
 
 ## A) GitHub Actions: build + push to GHCR
 
-Place the workflow from `.github/workflows/publish.yml` in your repo and push a **tag** (e.g., `v0.2`).
+Use `.github/workflows/release.yml`. Every push to `main` computes the next patch release, creates a GitHub Release tag (`vX.Y.Z`), and publishes:
+- `ghcr.io/<OWNER>/cuecard:X.Y.Z`
+- `ghcr.io/<OWNER>/cuecard:latest`
 
 ### Required repo settings
 - **Actions → General → Workflow permissions:** enable "Read and write permissions".
-
-The workflow will build multi-platform images (`linux/amd64, linux/arm64`) and push:
-- `ghcr.io/<OWNER>/cuecard:<tag>`
-- `ghcr.io/<OWNER>/cuecard:latest`
+- **Packages:** allow GitHub Actions to write to GHCR for this repository.
 
 ## B) Helm (Kubernetes)
 
@@ -29,7 +28,7 @@ The workflow will build multi-platform images (`linux/amd64, linux/arm64`) and p
 cat > cuecard-values.yaml <<'EOF'
 image:
   repository: ghcr.io/<your-org>/cuecard
-  tag: "0.2"
+  tag: "<release-version>"
 env:
   EMBEDDING_PROVIDER: openai
 secretEnv:
@@ -57,7 +56,7 @@ containers:
   - name: your-app
     # ...
   - name: cuecard
-    image: ghcr.io/<your-org>/cuecard:0.2
+    image: ghcr.io/<your-org>/cuecard:<release-version>
     envFrom:
       - configMapRef: { name: cuecard }
       - secretRef: { name: cuecard-secret }
@@ -88,6 +87,7 @@ Key settings (see [values.yaml](helm/cuecard/values.yaml) for the full chart sur
 - `EMBEDDING_MODEL`: default `text-embedding-3-small` (embedding dimension is derived from the model and must match the DB schema)
 - `secretEnv.DATABASE_URL`: e.g., `postgresql+psycopg://ctx:ctx@db:5432/ctx`
 - `secretEnv.CUECARD_API_KEY`: required for the chart and example manifests
+- `image.tag`: defaults to `latest`; pin this to a concrete release in production
 - `RERANK_WEIGHT`: default `0.1` (gentle success-rate boost)
 - `RETRIEVAL_OVERFETCH`: default `8`
 - `WORKER_POLL_SEC`: default `2`

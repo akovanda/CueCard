@@ -3,9 +3,11 @@ FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ARG CUECARD_VERSION=0.2.0
+ENV CUECARD_VERSION=$CUECARD_VERSION
 ARG INSTALL_DEV=false
 
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.txt requirements-dev.txt VERSION ./
 RUN python -m pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_DEV" = "true" ]; then python -m pip install --no-cache-dir -r requirements-dev.txt; fi \
     && pip cache purge
